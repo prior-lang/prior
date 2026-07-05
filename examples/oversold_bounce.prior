@@ -1,0 +1,14 @@
+# RSI washout with volume confirmation. Risk-based sizing: the position
+# is sized so a stop-out costs exactly 1% of equity, which is why the
+# [stop 2%] tag is required (the compiler enforces the pairing).
+
+strategy "Oversold Bounce"
+
+universe [mega_tech]
+timeframe 1d
+
+when [rsi] < 30 and [volume_spike 1.5x]
+  buy [risk 1%]
+
+sell when [rsi] crosses above 55
+  or [stop 2%]

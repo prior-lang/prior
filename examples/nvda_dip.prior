@@ -1,0 +1,10 @@
+# Single-ticker scoping: mentioning $NVDA inline replaces the universe
+# statement. This is the original sketch that started the language.
+
+strategy "NVDA Dip Buyer"
+
+when $NVDA at [lower_bollinger]
+  buy [5% portfolio]
+
+sell when $NVDA at [middle_bollinger]
+  or [after 10 bars]

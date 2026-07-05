@@ -1,0 +1,8 @@
+# The smallest complete PRIOR strategy.
+
+universe [sp_top_30]
+
+when [macd_cross_up]
+  buy [10% portfolio]
+
+sell when [macd_cross_down]

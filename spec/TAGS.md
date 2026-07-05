@@ -1,0 +1,169 @@
+# PRIOR Tag Reference — v0.1 (draft)
+
+Every tag in the language, its parameters, defaults, exact semantics, and what it compiles to. This file is the source of truth for the compiler's tag registry, the editor's autocomplete, and the `prior explain` readback strings.
+
+Tags come in five kinds (see `SPEC.md` §5): **condition**, **sizing**, **exit**, **risk**, **universe**. Condition tags subdivide by usage into **predicate tags** (complete conditions, used bare: `when [macd_cross_up]`) and **operand tags** (values compared with `at` / `above` / `below` / `crosses` / `<` / `>`: `when price at [lower_bollinger]`, `when [rsi] < 30`).
+
+Registry targets refer to the AutoQuant scanner condition registry (`engine/scanner/conditions.py`), which is the single implementation shared by StratScanner and PRIOR. Tags never fork registry semantics.
+
+---
+
+## Condition tags
+
+### `[lower_bollinger]` · `[upper_bollinger]` · `[middle_bollinger]` — operand
+
+| Param | Position | Default | Meaning |
+|---|---|---|---|
+| `period` | 1 | `20` | SMA/std window |
+| `std` | 2 (or named) | `2.0` | band width in standard deviations |
+
+Use: `price at [lower_bollinger]` · `price at [middle_bollinger]` · `price at [upper_bollinger std=1]`
+
+Compiles to `price_at_bollinger_band` with `band: lower|middle|upper`.
+
+**Exact `at` semantics (per registry):**
+- lower: `close <= lower_band` (touched or crossed this bar)
+- upper: `close >= upper_band`
+- middle: `|close − mid| / mid < 0.5%` (tolerance hardcoded in v0.1; may become a param later)
+
+Warmup: first `period` bars → false. Readback: *"price touches or crosses the {lower|middle|upper} Bollinger band ({period}-period, {std} standard deviation{s})"*.
+
+### `[rsi]` — operand
+
+| Param | Position | Default |
+|---|---|---|
+| `period` | 1 | `14` |
+
+Use, and the registry condition each comparator selects:
+
+| Written | Compiles to |
+|---|---|
+| `[rsi] < 30` | `rsi_less_than {period, threshold: 30}` |
+| `[rsi] > 70` | `rsi_greater_than` |
+| `[rsi] crosses above 55` | `rsi_crosses_above` (prev bar ≤ 55, this bar > 55) |
+| `[rsi] crosses below 45` | `rsi_crosses_below` |
+
+The right-hand side must be a number 0–100. Readback: *"RSI({period}) {is below|is above|crosses above|crosses below} {threshold}"*.
+
+### `[sma N]` · `[ema N]` — operand
+
+| Param | Position | Default |
+|---|---|---|
+| `period` | 1 | required |
+
+| Written | Compiles to |
+|---|---|
+| `price above [sma 50]` | `price_above_sma {period: 50}` |
+| `price below [sma 50]` | `price_below_sma` |
+| `price above [ema 20]` | `price_above_ema` |
+| `price below [ema 20]` | `price_below_ema` |
+| `[ema 50] crosses above [ema 200]` | `ema_crosses_above {fast: 50, slow: 200}` |
+| `[ema 50] crosses below [ema 200]` | **registry gap** — compile error "planned" (SPEC §9) |
+| `[sma N] crosses above/below [sma M]` | **registry gap** — compile error "planned" (SPEC §9) |
+
+In an MA-cross comparison, the left tag is `fast` and the right is `slow`; `fast >= slow` is a compile error (*"the faster average goes on the left: [ema 50] crosses above [ema 200]"*).
+
+### `[macd_cross_up]` · `[macd_cross_down]` — predicate
+
+| Param | Position | Default |
+|---|---|---|
+| `fast` | 1 | `12` |
+| `slow` | 2 | `26` |
+| `signal` | 3 | `9` |
+
+Use bare: `when [macd_cross_up]`. Compiles to `macd_crosses_above_signal` / `macd_crosses_below_signal`. The MACD line crossed its signal line on this bar (prev-bar diff ≤ 0 and this-bar diff > 0, or the mirror). Readback: *"MACD({fast},{slow},{signal}) crosses {above|below} its signal line"*.
+
+### `[volatile N%]` · `[quiet N%]` — predicate
+
+| Param | Position | Default |
+|---|---|---|
+| `threshold` | 1 (percent) | required |
+| `period` | named | `14` |
+
+`[volatile 2%]` → `atr_greater_than_pct {threshold_pct: 2.0, period: 14}`: ATR as a percent of price is above 2%. `[quiet 1%]` → `atr_less_than_pct`: below 1%. Readback: *"ATR({period}) is {above|below} {threshold}% of price"*.
+
+### `[volume_spike Nx]` — predicate
+
+| Param | Position | Default |
+|---|---|---|
+| `multiplier` | 1 (multiplier) | `1.5x` |
+| `period` | named | `20` |
+
+`[volume_spike 1.5x]` → `volume_greater_than_avg {multiplier: 1.5, period: 20}`: this bar's volume exceeds the 20-bar average × 1.5. Readback: *"volume is more than {multiplier}× its {period}-bar average"*.
+
+### `[heavy_volume top N%]` — predicate
+
+| Param | Position | Default |
+|---|---|---|
+| `top` | 1 (word + percent) | `top 10%` |
+| `period` | named | `60` |
+
+`[heavy_volume top 10%]` → `volume_in_top_pct {top_pct: 10, period: 60}`: this bar's volume is in the top 10% of the trailing 60-bar distribution. Readback: *"volume is in the top {N}% of the last {period} bars"*.
+
+---
+
+## Sizing tags (exactly one, after `buy`)
+
+### `[N% portfolio]`
+
+Special form (percent-first, see SPEC §3). Position size = N% of current portfolio equity. → `{method: percent_of_portfolio, value: N/100}`. Readback: *"buy {N}% of the portfolio"*.
+
+### `[$N]`
+
+Special form. Fixed dollar amount per position. → `{method: fixed_dollar, value: N}`. Readback: *"buy ${N} worth"*.
+
+### `[risk N%]`
+
+Position sized so that if the stop is hit, the loss equals N% of equity: `size = (equity × N%) / stop_distance`. **Requires a `[stop x%]` tag in the exit rule** — compile error otherwise (SPEC §5). → `{method: risk_based, value: N/100}`. Readback: *"size the position to risk {N}% of equity at the stop"*.
+
+---
+
+## Exit tags (`or`-combinable in the `sell` rule)
+
+| Tag | Param | Semantics | Readback |
+|---|---|---|---|
+| `[stop N%]` | percent, required | exit if price falls N% below entry. Max one per strategy. | *"stop loss {N}% below entry"* |
+| `[target N%]` | percent, required | exit if price rises N% above entry | *"take profit {N}% above entry"* |
+| `[trailing N%]` | percent, required | exit if price falls N% from its high-water mark since entry | *"trailing stop {N}% off the high"* |
+| `[after N bars]` | number + `bars`, required | exit at the close of the Nth bar after entry | *"exit after {N} bars"* |
+
+v0.1 evaluation is bar-close (SPEC §6); precedence within a bar: stop → target → trailing → condition exits → after.
+
+---
+
+## Risk tags (in the `risk` statement)
+
+| Tag | Param | Semantics |
+|---|---|---|
+| `[max_positions N]` | number | never hold more than N open positions across the strategy |
+| `[max_position N%]` | percent | no single position may exceed N% of equity at entry |
+| `[daily_loss $N]` | dollar | halt new entries for the day after realized losses reach $N |
+
+Risk tags attach as strategy-level metadata for the runner; they do not alter `generate_signals`.
+
+---
+
+## Universe tags (in the `universe` statement)
+
+Shared 1:1 with the AutoQuant engine's prebuilt universes (`engine/loop/universes.py`) and the StratScanner dropdown. Re-expanded from their definition on every run.
+
+| Tag | Contents (2026-07-05) |
+|---|---|
+| `[sp_top_30]` | 30 largest S&P names by market cap. ORCL fills the BRK-B slot (Berkshire's ticker formats inconsistently across data providers). |
+| `[mega_tech]` | 15 mega-cap tech: AAPL MSFT GOOGL AMZN META NVDA TSLA AVGO ORCL CRM ADBE NFLX AMD INTC QCOM |
+| `[etf_sectors]` | 11 SPDR sector ETFs: XLK XLF XLE XLV XLI XLY XLP XLB XLRE XLU XLC |
+| `[big_banks]` | 10 money-center + super-regional banks: JPM BAC WFC C GS MS USB PNC TFC SCHW |
+| `[semis]` | 14 semiconductor leaders: NVDA AVGO AMD QCOM TXN INTC MU AMAT LRCX KLAC MRVL ADI NXPI MCHP |
+
+Manual universes skip the tag: `universe $AAPL $MSFT $NVDA` or, for one ticker, inline scoping (`when $NVDA at [lower_bollinger]`).
+
+---
+
+## Adding a tag (the process, so we never fork semantics)
+
+1. The condition lands in the scanner registry first (`conditions.py`), with params and defaults.
+2. This file gets the tag entry: name, kind, params table, registry mapping, readback string.
+3. The compiler's tag table is regenerated from this file (Phase C makes this mechanical).
+4. An example or test exercises the tag through compile + backtest.
+
+Tags are the human names; registry keys are the stable API. Registry keys never rename for the language's sake.

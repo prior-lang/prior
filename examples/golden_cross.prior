@@ -1,0 +1,15 @@
+# Trend following on sector ETFs: enter on the 50/200 EMA golden cross,
+# ride it with a trailing stop. Fixed-dollar sizing, capped at three
+# concurrent positions.
+
+strategy "Golden Cross Trend"
+
+universe [etf_sectors]
+timeframe 1d
+
+when [ema 50] crosses above [ema 200]
+  buy [$10000]
+
+sell when [trailing 5%]
+
+risk [max_positions 3]

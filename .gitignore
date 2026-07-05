@@ -1,0 +1,12 @@
+# python (compiler toolchain)
+__pycache__/
+*.pyc
+.venv/
+dist/
+build/
+*.egg-info/
+
+# editors / os
+.DS_Store
+.idea/
+.vscode/

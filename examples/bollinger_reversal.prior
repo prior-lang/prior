@@ -1,0 +1,17 @@
+# Mean reversion at the lower Bollinger band. This is the rule that
+# StratScanner flagged on NVDA, AVGO, WMT, and CSCO on 2026-07-04,
+# and the strategy behind the Sharpe 1.078 NVDA backtest.
+
+strategy "Bollinger Reversal"
+
+universe [sp_top_30]
+timeframe 1d
+
+when price at [lower_bollinger std=1]
+  buy [5% portfolio]
+
+sell when price at [middle_bollinger]
+  or [stop 1.5%]
+  or [after 5 bars]
+
+risk [max_positions 5] [max_position 10%]
