@@ -36,7 +36,7 @@ These are not stylistic preferences. Violating any of them is a spec bug.
 | MULTIPLIER | number + `x` | `1.5x`, `2x` | |
 | TICKER | `$` + letters (may contain `-`) | `$NVDA`, `$BTC-USD` | disambiguated from DOLLAR by first char after `$` |
 | TIMEFRAME | int + unit | `1d`, `4h`, `15m`, `1w` | lexical form only; the compiler validates against the engine-supported set at compile time (engine is the source of truth) |
-| TAGNAME / WORD | `[a-z_][a-z0-9_]*` | `lower_bollinger`, `top` | |
+| TAGNAME / WORD | `[a-z_][a-z0-9_]*` | `lower_bollinger`, `top` | dotted names (`acme.momo_score`) are reserved for namespaced third-party tags in a future version; v0.1 rejects them with a "coming later" error |
 
 ### Keywords
 
