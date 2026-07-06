@@ -148,6 +148,20 @@ def _condition_to_term_inner(cond: dict):
             pos.append(("number", _n(p["period"])))
         return Predicate(_tag("obv_rising", pos))
 
+    if name in ("iv_rank_less_than", "iv_rank_greater_than"):
+        named = {}
+        if _n(p.get("lookback", 252)) != 252:
+            named["lookback"] = ("number", _n(p["lookback"]))
+        cmp = "<" if "less" in name else ">"
+        return Comparison(_tag("ivrank", named=named), cmp, ("number", _n(p["threshold"])))
+
+    if name in ("short_interest_less_than", "short_interest_greater_than"):
+        cmp = "<" if "less" in name else ">"
+        return Comparison(_tag("short_interest"), cmp, ("number", _n(p["threshold"])))
+
+    if name in ("earnings_within", "no_earnings_within"):
+        return Predicate(_tag(name, [("number", _n(p["days"])), ("word", "days")]))
+
     if name in ("adx_greater_than", "adx_less_than"):
         pos = []
         if _n(p.get("period", 14)) != 14:

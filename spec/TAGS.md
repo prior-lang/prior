@@ -120,6 +120,18 @@ Readbacks: *"price makes a new {period}-bar closing {high|low}"* · *"price gaps
 
 ---
 
+## Cloud-only condition tags
+
+Syntax that parses, validates, formats, and explains everywhere — but whose evaluation needs data that only exists hosted. Local compilation refuses with a pointer to `--cloud` / AutoQuant; the hosted runtime injects the evaluators.
+
+| Tag | Use | Compiles to |
+|---|---|---|
+| `[ivrank] > 50` / `< 30` | operand, 0-100, `lookback` (252) | `iv_rank_greater_than` / `iv_rank_less_than` — IV rank against its own trailing year |
+| `[short_interest] > 20` | operand, 0-100 (% of float) | `short_interest_greater_than` / `_less_than` |
+| `[earnings_within 7 days]` / `[no_earnings_within 7 days]` | predicate | earnings-calendar proximity gates |
+
+---
+
 ## Metric tags (rank/weight metrics in `hold` strategies)
 
 | Tag | Params (defaults) | Definition |

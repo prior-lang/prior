@@ -30,10 +30,11 @@ class Param:
 @dataclass
 class TagSpec:
     name: str
-    kind: str  # condition | sizing | exit | risk | universe
+    kind: str  # condition | sizing | exit | risk | universe | metric | option | management
     usage: str  # operand | predicate | n/a
     positional: list[Param] = field(default_factory=list)
     named: dict[str, Param] = field(default_factory=dict)
+    cloud_only: bool = False   # parses/explains everywhere; evaluates only on hosted data
 
 
 def _p(name, kind, default=None, required=False):
@@ -183,6 +184,37 @@ _register(TagSpec(
     positional=[_p("period", NUMBER, 14)],
     named={"period": _p("period", NUMBER, 14), "smooth": _p("smooth", NUMBER, 3)},
 ))
+
+# ── Cloud-only condition tags ──────────────────────────────────────
+# These parse, validate, format, and explain everywhere. Evaluation needs
+# data that only exists hosted (chain history, earnings calendars, short
+# interest), so local compilation refuses with a pointer to --cloud.
+
+_register(TagSpec(
+    name="ivrank", kind="condition", usage="operand",
+    named={"lookback": _p("lookback", NUMBER, 252)},
+    cloud_only=True,
+))
+_register(TagSpec(
+    name="short_interest", kind="condition", usage="operand",
+    cloud_only=True,
+))
+_register(TagSpec(
+    name="earnings_within", kind="condition", usage="predicate",
+    positional=[_p("days", NUMBER, required=True), _p("unit", WORD, "days")],
+    cloud_only=True,
+))
+_register(TagSpec(
+    name="no_earnings_within", kind="condition", usage="predicate",
+    positional=[_p("days", NUMBER, required=True), _p("unit", WORD, "days")],
+    cloud_only=True,
+))
+
+CLOUD_ONLY_CONDITIONS = {
+    "iv_rank_less_than", "iv_rank_greater_than",
+    "short_interest_less_than", "short_interest_greater_than",
+    "earnings_within", "no_earnings_within",
+}
 
 # ── Metric tags (rank/weight metrics for hold strategies) ─────────
 

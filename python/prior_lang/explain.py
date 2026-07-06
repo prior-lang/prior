@@ -81,6 +81,15 @@ def _condition_text_inner(cond: dict) -> str:
             f"volume is in the top {_num(p.get('top_pct', 10))}% of the last "
             f"{_plural(p.get('period', 60), 'bar')}"
         )
+    if name in ("iv_rank_less_than", "iv_rank_greater_than"):
+        side = "below" if "less" in name else "above"
+        return f"IV rank is {side} {_num(p.get('threshold'))} (hosted data)"
+    if name in ("short_interest_less_than", "short_interest_greater_than"):
+        side = "below" if "less" in name else "above"
+        return f"short interest is {side} {_num(p.get('threshold'))}% of float (hosted data)"
+    if name in ("earnings_within", "no_earnings_within"):
+        neg = "no " if name.startswith("no_") else ""
+        return f"{neg}earnings within {_plural(p.get('days'), 'day')} (hosted data)"
     if name in ("price_new_high", "price_new_low"):
         side = "high" if name.endswith("high") else "low"
         return f"price makes a new {_num(p.get('period', 252))}-bar closing {side}"

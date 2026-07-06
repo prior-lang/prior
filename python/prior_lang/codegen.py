@@ -344,6 +344,14 @@ def _hcode(condition: Dict[str, Any]) -> str:
             f"    cond = (obv > obv_avg).fillna(False)"
         )
 
+    if ctype in ("iv_rank_less_than", "iv_rank_greater_than",
+                 "short_interest_less_than", "short_interest_greater_than",
+                 "earnings_within", "no_earnings_within"):
+        # Hosted-data condition: the cloud runtime injects _prior_cloud into
+        # the execution namespace; local runners never reach this emission
+        # (compile_strategy refuses without allow_cloud).
+        return f"cond = _prior_cloud(df, {ctype!r}, {dict(p)!r})"
+
     raise ValueError(f"Unknown condition type: {ctype}")
 
 
@@ -1457,8 +1465,44 @@ def generate_ranking_code(
     )
 
 
-def compile_strategy(strategy: Dict[str, Any]) -> str:
-    """Strategy JSON (the parser's output) → Python source string."""
+def _find_cloud_only(strategy: Dict[str, Any]) -> list:
+    from .tags import CLOUD_ONLY_CONDITIONS
+    found = []
+
+    def scan(conds):
+        for c in conds or []:
+            if c.get("condition") in CLOUD_ONLY_CONDITIONS:
+                found.append(c["condition"])
+
+    scan((strategy.get("entry") or {}).get("conditions"))
+    scan((strategy.get("exit") or {}).get("conditions"))
+    for r in strategy.get("rules") or []:
+        scan(r.get("conditions"))
+    for side in (strategy.get("exits") or {}).values():
+        scan(side.get("conditions"))
+    scan(((strategy.get("ranking") or {}).get("where") or {}).get("conditions"))
+    scan((strategy.get("partial_exit") or {}).get("conditions"))
+    scan(((strategy.get("options") or {}).get("entry") or {}).get("conditions"))
+    return found
+
+
+def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False) -> str:
+    """Strategy JSON (the parser's output) → Python source string.
+
+    Cloud-only conditions (IV rank, earnings calendar, short interest)
+    refuse local compilation unless allow_cloud=True — the hosted runner
+    passes that after substituting its own evaluators."""
+    if not allow_cloud:
+        cloud = _find_cloud_only(strategy)
+        if cloud:
+            from .errors import PriorError
+            names = ", ".join(sorted(set(cloud)))
+            raise PriorError(
+                f"this strategy uses hosted-data conditions ({names}) — it "
+                "validates, formats, and explains here, but evaluation needs "
+                "data that only exists hosted. Backtest with --cloud (coming "
+                "soon) or in AutoQuant."
+            )
     def _conds(lst):
         return [
             {"type": c["condition"], "params": c.get("params", {}),

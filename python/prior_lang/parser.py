@@ -36,6 +36,8 @@ _PREDICATE_MAP = {
     "down_days": "down_days",
     "squeeze": "bollinger_squeeze",
     "obv_rising": "obv_rising",
+    "earnings_within": "earnings_within",
+    "no_earnings_within": "no_earnings_within",
 }
 
 
@@ -411,6 +413,8 @@ def _desugar_inner(term) -> dict:
             }}
         if tag.name == "obv_rising":
             return {"condition": name, "params": {"period": int(p["period"])}}
+        if tag.name in ("earnings_within", "no_earnings_within"):
+            return {"condition": name, "params": {"days": int(p["days"])}}
         # MACD crosses
         return {"condition": name, "params": {"fast": int(p["fast"]), "slow": int(p["slow"]), "signal": int(p["signal"])}}
 
@@ -476,6 +480,22 @@ def _desugar_inner(term) -> dict:
                 line=term.line,
             )
         return {"condition": name, "params": {"period": period, "threshold": threshold}}
+
+    if isinstance(left, TagNode) and left.name in ("ivrank", "short_interest"):
+        if not (isinstance(right, tuple) and right[0] == "number"):
+            raise PriorError(f"[{left.name}] compares against a number from 0 to 100", line=term.line)
+        threshold = float(right[1])
+        if not (0 <= threshold <= 100):
+            raise PriorError(f"[{left.name}] lives between 0 and 100", line=term.line)
+        base = "iv_rank" if left.name == "ivrank" else "short_interest"
+        table = {"<": f"{base}_less_than", ">": f"{base}_greater_than"}
+        name = table.get(cmp)
+        if name is None:
+            raise PriorError(f"[{left.name}] supports < and >", line=term.line)
+        params = {"threshold": threshold}
+        if left.name == "ivrank":
+            params["lookback"] = int(left.params.get("lookback", 252))
+        return {"condition": name, "params": params}
 
     if isinstance(left, TagNode) and left.name == "adx":
         if not (isinstance(right, tuple) and right[0] == "number"):
@@ -773,6 +793,10 @@ def _resolve_params(cur: _Cursor, name_tok: Token, spec: TagSpec, pos_raw, named
         unit = params.get("unit", "bars")
         if unit not in ("bar", "bars"):
             cur.err(f"[after] counts bars: [after 5 bars], not '{unit}'", tok=name_tok)
+    if spec.name in ("earnings_within", "no_earnings_within"):
+        unit = params.get("unit", "days")
+        if unit not in ("day", "days"):
+            cur.err(f"[{spec.name}] counts days: [{spec.name} 7 days]", tok=name_tok)
     if spec.name == "breakeven" and params.get("word") != "after":
         cur.err("[breakeven] reads: [breakeven after 2%]", tok=name_tok)
     return params

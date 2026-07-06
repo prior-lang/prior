@@ -1,0 +1,18 @@
+# Premium sellers have one commandment: sell when volatility is expensive.
+# IV rank above 50 means today's implied volatility is rich against its
+# own year, and the earnings gate keeps the one scheduled landmine out of
+# the trade. IV rank and earnings calendars are hosted data — this file
+# validates and explains anywhere, and backtests where that data lives.
+
+strategy "Premium When Rich"
+
+universe $AAPL
+timeframe 1d
+
+when [ivrank] > 50 and [no_earnings_within 7 days]
+  write [csp delta=25 dte=45]
+
+close at [profit 50%]
+  or [dte 21]
+
+risk [contracts 1]
