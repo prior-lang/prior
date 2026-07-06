@@ -13,8 +13,10 @@ EXAMPLES = sorted((Path(__file__).parents[2] / "examples").glob("*.prior"))
 @pytest.mark.parametrize("path", EXAMPLES, ids=[p.stem for p in EXAMPLES])
 def test_example_parses_and_compiles(path):
     strategy = prior_lang.compile_source(path.read_text(), filename=path.name)
-    assert strategy["version"] == "0.6"
-    if "ranking" in strategy:
+    assert strategy["version"] == "0.7"
+    if "options" in strategy:
+        assert strategy["options"]["option"]["type"]
+    elif "ranking" in strategy:
         assert strategy["ranking"]["count"] >= 1
         assert strategy["ranking"]["metric"]["name"]
     else:
@@ -30,7 +32,7 @@ def test_example_formats_idempotently(path):
 
 
 def test_examples_exist():
-    assert len(EXAMPLES) == 19
+    assert len(EXAMPLES) == 20
 
 
 def test_bollinger_reversal_compiles_exactly():

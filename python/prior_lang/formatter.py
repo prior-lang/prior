@@ -85,6 +85,29 @@ def format_program(prog: Program) -> str:
     if setup:
         blocks.append("\n".join(setup))
 
+    if prog.opt_form is not None:
+        if prog.opt_form == "wheel":
+            head = f"wheel [delta={_num(prog.opt_params.get('delta', 25))} dte={_num(prog.opt_params.get('dte', 45))}]"
+            if prog.opt_entry_terms:
+                joiner = " and " if prog.opt_entry_logic == "all" else " or "
+                head += "\n  where " + joiner.join(_term(t) for t in prog.opt_entry_terms)
+            blocks.append(head)
+        else:
+            joiner = " and " if prog.opt_entry_logic == "all" else " or "
+            entry = "when " + joiner.join(_term(t) for t in prog.opt_entry_terms)
+            entry += f"\n  write {_tag(prog.opt_option)}"
+            blocks.append(entry)
+        if prog.mgmt_close_terms:
+            lines = [f"close at {_tag(prog.mgmt_close_terms[0])}"]
+            for t in prog.mgmt_close_terms[1:]:
+                lines.append(f"  or {_tag(t)}")
+            blocks.append("\n".join(lines))
+        if prog.mgmt_roll_terms:
+            blocks.append(f"roll at {_tag(prog.mgmt_roll_terms[0])}")
+        if prog.risk_tags:
+            blocks.append("risk " + " ".join(_tag(t) for t in prog.risk_tags))
+        return "\n\n".join(blocks) + "\n"
+
     if prog.rank_select is not None:
         if prog.rebalance:
             setup.append(f"rebalance {prog.rebalance}")

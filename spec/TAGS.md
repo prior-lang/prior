@@ -1,4 +1,4 @@
-# PRIOR Tag Reference — v0.6 (draft)
+# PRIOR Tag Reference — v0.7 (draft)
 
 Every tag in the language, its parameters, defaults, exact semantics, and what it compiles to. This file is the source of truth for the compiler's tag registry, the editor's autocomplete, and the `prior explain` readback strings.
 
@@ -161,6 +161,19 @@ Position sized so that if the stop is hit, the loss equals N% of equity: `size =
 | `[after N bars]` | number + `bars`, required | exit at the close of the Nth bar after entry | *"exit after {N} bars"* |
 
 Evaluation is bar-close (SPEC §6); precedence within a bar: stop → breakeven → target → trailing → condition exits → after. ATR stops/targets freeze the entry-bar ATR(14); the ATR trailing form uses the current bar's ATR (chandelier). Exit tags are direction-relative: in a short strategy, `[stop]` is the price rising N% above entry, `[target]` is it falling N% below, and `[trailing]` trails the low-water mark upward.
+
+---
+
+## Option & management tags (v0.7)
+
+| Tag | Kind | Params (defaults) | Meaning |
+|---|---|---|---|
+| `[csp delta=25 dte=45]` | option | delta (25, trader units), dte (45) | the cash-secured put nearest those coordinates |
+| `[covered_call delta=25 dte=45]` | option | same | the call written against held shares |
+| `[profit 50%]` | management | percent of credit | close when half the credit is captured |
+| `[loss 200%]` | management | percent of credit | close when the loss reaches 2x the credit |
+| `[dte 21]` | management | days | close (in `close at`) or roll (in `roll at`) at N days to expiry |
+| `[contracts 1]` / `[collateral 50%]` | risk | count / percent | option position sizing |
 
 ---
 

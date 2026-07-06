@@ -160,6 +160,43 @@ def explain_strategy(strategy: dict) -> str:
         tickers = ", ".join(uni.get("tickers", []))
         lines.append(f"Trades {tickers} on {strategy.get('timeframe', '1d')} bars.")
 
+    options = strategy.get("options")
+    if options:
+        opt = options.get("option", {})
+        mgmt = options.get("management") or {}
+        risk = strategy.get("risk") or {}
+        delta = _num(opt.get("delta", 25))
+        dte = _num(opt.get("dte", 45))
+        if options.get("form") == "wheel":
+            line = (f"Run the wheel: sell the ~{delta}-delta cash-secured put ~{dte} days out; "
+                    f"if assigned, sell the ~{delta}-delta covered call against the shares; "
+                    "called away means back to selling puts.")
+        else:
+            kind = "cash-secured put" if opt.get("type") == "csp" else "covered call"
+            line = f"Write the ~{delta}-delta {kind} ~{dte} days out"
+            conds = (options.get("entry") or {}).get("conditions") or []
+            if conds:
+                joiner = " and " if (options.get("entry") or {}).get("match_logic", "all") == "all" else " or "
+                line += " when " + joiner.join(_condition_text(c) for c in conds)
+            line += "."
+        lines.append(line)
+        bits = []
+        if mgmt.get("profit_pct") is not None:
+            bits.append(f"close at {_num(mgmt['profit_pct'])}% of the credit captured")
+        if mgmt.get("loss_pct") is not None:
+            bits.append(f"close if the loss reaches {_num(mgmt['loss_pct'])}% of the credit")
+        if mgmt.get("close_dte") is not None:
+            bits.append(f"close at {_num(mgmt['close_dte'])} DTE")
+        if mgmt.get("roll_dte") is not None:
+            bits.append(f"roll at {_num(mgmt['roll_dte'])} DTE")
+        if bits:
+            lines.append("Management, checked daily: " + "; ".join(bits) + ". Otherwise positions run to expiry, where assignment is decided by moneyness.")
+        if "contracts" in risk:
+            lines.append(f"Size: {_plural(risk['contracts'], 'contract')} per position.")
+        elif "collateral_pct" in risk:
+            lines.append(f"Size: puts sized so collateral stays within {_num(risk['collateral_pct'] * 100)}% of equity.")
+        return "\n".join(lines)
+
     ranking = strategy.get("ranking")
     if ranking:
         m = ranking["metric"]

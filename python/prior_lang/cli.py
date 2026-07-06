@@ -106,6 +106,12 @@ def _cmd_backtest(args) -> int:
     )
 
     strategy = _load_program(args.file).to_json()
+    if strategy.get("options"):
+        raise SystemExit(
+            "options backtests need real chain data, which cannot be bundled or "
+            "synthesized honestly.\nThis strategy validates, formats, and explains "
+            "here; backtest it in AutoQuant desktop, or prior backtest --cloud (coming soon)."
+        )
     df = load_bars(args.data)
     name = strategy.get("name") or Path(args.file).stem
 

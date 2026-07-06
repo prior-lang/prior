@@ -209,6 +209,41 @@ def strategy_to_source(strategy: dict) -> str:
     elif tf == "1d":
         prog.timeframe = "1d"
 
+    options = strategy.get("options")
+    if options:
+        opt = options.get("option", {})
+        prog.opt_form = options.get("form", "wheel")
+        entry = options.get("entry") or {}
+        prog.opt_entry_logic = entry.get("match_logic", "all")
+        prog.opt_entry_terms = [_condition_to_term(c) for c in entry.get("conditions") or []]
+        if prog.opt_form == "wheel":
+            prog.opt_params = {"delta": _n(opt.get("delta", 25)), "dte": _n(opt.get("dte", 45))}
+        else:
+            named = {}
+            if _n(opt.get("delta", 25)) != 25:
+                named["delta"] = ("number", _n(opt["delta"]))
+            if _n(opt.get("dte", 45)) != 45:
+                named["dte"] = ("number", _n(opt["dte"]))
+            prog.opt_option = _tag(opt["type"], named=named,
+                                   params={"delta": _n(opt.get("delta", 25)), "dte": _n(opt.get("dte", 45))})
+        mgmt = options.get("management") or {}
+        if mgmt.get("profit_pct") is not None:
+            prog.mgmt_close_terms.append(_tag("profit", [("percent", _n(mgmt["profit_pct"]))], params={"value": _n(mgmt["profit_pct"])}))
+        if mgmt.get("loss_pct") is not None:
+            prog.mgmt_close_terms.append(_tag("loss", [("percent", _n(mgmt["loss_pct"]))], params={"value": _n(mgmt["loss_pct"])}))
+        if mgmt.get("close_dte") is not None:
+            prog.mgmt_close_terms.append(_tag("dte", [("number", _n(mgmt["close_dte"]))], params={"days": mgmt["close_dte"]}))
+        if mgmt.get("roll_dte") is not None:
+            prog.mgmt_roll_terms.append(_tag("dte", [("number", _n(mgmt["roll_dte"]))], params={"days": mgmt["roll_dte"]}))
+        risk = strategy.get("risk") or {}
+        if "contracts" in risk:
+            prog.risk_tags.append(_tag("contracts", [("number", _n(risk["contracts"]))], params={"count": risk["contracts"]}))
+        if "collateral_pct" in risk:
+            prog.risk_tags.append(_tag("collateral", [("percent", _n(risk["collateral_pct"]) * 100)], params={"value": _n(risk["collateral_pct"]) * 100}))
+        if "cooldown_bars" in risk:
+            prog.risk_tags.append(_tag("cooldown", [("number", _n(risk["cooldown_bars"]))], params={"bars": risk["cooldown_bars"]}))
+        return format_program(prog)
+
     ranking = strategy.get("ranking")
     if ranking:
         prog.rebalance = strategy.get("rebalance", "monthly")

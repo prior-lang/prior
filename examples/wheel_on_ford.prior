@@ -1,0 +1,20 @@
+# The strategy half of r/thetagang runs by hand every month, as a program:
+# sell the ~25-delta cash-secured put ~45 days out; take assignment if it
+# comes and sell the ~25-delta covered call against the shares; called
+# away means back to selling puts. Half the credit is the take-profit,
+# three times the credit is the uncle point, and nothing survives past
+# 21 DTE unmanaged. The playbook is folklore. Now it compiles.
+
+strategy "Wheel on Ford"
+
+universe $F
+timeframe 1d
+
+wheel [delta=25 dte=45]
+
+close at [profit 50%]
+  or [loss 200%]
+
+roll at [dte 21]
+
+risk [contracts 1]

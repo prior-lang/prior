@@ -208,6 +208,32 @@ _register(TagSpec(
     positional=[_p("period", NUMBER, 20)],
 ))
 
+# ── Option tags (write [csp ...] / write [covered_call ...]) ───────
+
+_register(TagSpec(
+    name="csp", kind="option", usage="n/a",
+    named={"delta": _p("delta", NUMBER, 25), "dte": _p("dte", NUMBER, 45)},
+))
+_register(TagSpec(
+    name="covered_call", kind="option", usage="n/a",
+    named={"delta": _p("delta", NUMBER, 25), "dte": _p("dte", NUMBER, 45)},
+))
+
+# ── Management tags (close at ... / roll at ...) ───────────────────
+
+_register(TagSpec(
+    name="profit", kind="management", usage="n/a",
+    positional=[_p("value", PERCENT, required=True)],
+))
+_register(TagSpec(
+    name="loss", kind="management", usage="n/a",
+    positional=[_p("value", PERCENT, required=True)],
+))
+_register(TagSpec(
+    name="dte", kind="management", usage="n/a",
+    positional=[_p("days", NUMBER, required=True)],
+))
+
 # ── Sizing tags (name-first form; the two special forms are handled
 #    directly by the parser: [N% portfolio] and [$N]) ────────────────
 
@@ -249,6 +275,14 @@ _register(TagSpec(
 _register(TagSpec(
     name="cooldown", kind="risk", usage="n/a",
     positional=[_p("bars", NUMBER, required=True)],
+))
+_register(TagSpec(
+    name="contracts", kind="risk", usage="n/a",
+    positional=[_p("count", NUMBER, required=True)],
+))
+_register(TagSpec(
+    name="collateral", kind="risk", usage="n/a",
+    positional=[_p("value", PERCENT, required=True)],
 ))
 
 # ── Universe tags ──────────────────────────────────────────────────

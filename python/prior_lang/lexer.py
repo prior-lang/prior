@@ -17,6 +17,7 @@ KEYWORDS = {
     "strategy", "universe", "timeframe", "when", "if", "buy", "sell", "risk",
     "short", "cover",
     "hold", "rebalance", "top", "bottom", "by", "where", "weighted", "equally",
+    "wheel", "write", "close", "roll",
     "and", "or", "at", "above", "below", "crosses", "price", "volume",
 }
 RESERVED = {"on"}
@@ -158,7 +159,7 @@ def tokenize(source: str) -> list[LogicalLine]:
         if not toks:
             continue
         first = toks[0]
-        is_continuation = first.kind == "keyword" and first.value in ("and", "or", "buy", "short", "where", "weighted")
+        is_continuation = first.kind == "keyword" and first.value in ("and", "or", "buy", "short", "write", "where", "weighted")
         if is_continuation:
             if not logical:
                 raise PriorError(

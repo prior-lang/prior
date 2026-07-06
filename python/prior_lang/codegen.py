@@ -1040,6 +1040,185 @@ def generate_mixed_code(
     return pd.Series(sig, index=df.index)
 '''
 
+
+
+def generate_options_code(options: Dict[str, Any], risk: Dict[str, Any] | None = None) -> str:
+    """Emit generate_option_orders(df, chains) for an options strategy.
+
+    df: underlying OHLCV, datetime-indexed. chains: long-form frame with
+    columns [date, expiry, strike, right ('P'|'C'), delta, mid] — one row
+    per contract per day (the engine's options data shape; the OSS runner
+    never fabricates this, per the design doc).
+
+    Returns an orders DataFrame [date, action, right, strike, expiry,
+    price, state]. Actions: sell_put, sell_call, close, roll_close,
+    roll_open, assigned, expired, called_away.
+
+    Semantics: bar-close; management (profit/loss/close-dte/roll-dte)
+    checked before expiry settlement; assignment at expiry by moneyness;
+    entry (or wheel re-entry) attempted after management the same bar.
+    Chain selection: nearest listed expiry at least DTE days out, then
+    the strike whose |delta| is nearest the target (ties: lower strike
+    for puts, higher for calls).
+    """
+    form = options.get("form", "wheel")
+    opt = options.get("option", {})
+    target_delta = float(opt.get("delta", 25))
+    target_dte = int(opt.get("dte", 45))
+    mgmt = options.get("management") or {}
+    profit = float(mgmt.get("profit_pct") or 0.0)
+    loss = float(mgmt.get("loss_pct") or 0.0)
+    close_dte = int(mgmt.get("close_dte") or 0)
+    roll_dte = int(mgmt.get("roll_dte") or 0)
+    entry = options.get("entry") or {}
+    conditions = entry.get("conditions") or []
+
+    metadata = ""
+    if risk:
+        metadata += f"RISK = {risk!r}\n\n\n"
+
+    gate_fn = ""
+    gate_call = "    gate = pd.Series(True, index=df.index)\n"
+    if conditions:
+        conds = [
+            {"type": c["condition"], "params": c.get("params", {})}
+            for c in conditions
+        ]
+        body, expr = _condition_blocks(conds, entry.get("match_logic", "all"), "gcond")
+        gate_fn = (
+            "def _prior_gate(df):\n"
+            '    close = df["close"]\n'
+            "\n" + body + "\n\n"
+            f"    return ({expr}).fillna(False)\n\n\n"
+        )
+        gate_call = "    gate = _prior_gate(df)\n"
+
+    if form == "wheel":
+        put_enabled = "True"
+        call_enabled = "True"
+        assigned_state = "'long_stock'"
+        kind_desc = "the wheel"
+    elif opt.get("type") == "csp":
+        put_enabled = "True"
+        call_enabled = "False"
+        assigned_state = "'assigned_hold'"  # terminal: hold shares, no calls
+        kind_desc = "cash-secured puts"
+    else:  # covered_call
+        put_enabled = "False"
+        call_enabled = "True"
+        assigned_state = "'long_stock'"
+        kind_desc = "covered calls"
+
+    start_state = "'long_stock'" if (form != "wheel" and opt.get("type") == "covered_call") else "'cash'"
+
+    return f'''{metadata}{gate_fn}def _prior_pick(ch_d, right, target_delta, target_dte, d):
+    """Nearest expiry >= DTE, then nearest |delta|; deterministic ties."""
+    cands = ch_d[ch_d["right"] == right]
+    if len(cands) == 0:
+        return None
+    days = (pd.to_datetime(cands["expiry"]) - d).dt.days
+    cands = cands[days >= target_dte]
+    if len(cands) == 0:
+        return None
+    days = (pd.to_datetime(cands["expiry"]) - d).dt.days
+    best_exp = cands.loc[days.idxmin(), "expiry"]
+    cands = cands[cands["expiry"] == best_exp].copy()
+    cands["_dgap"] = (cands["delta"].abs() - target_delta).abs()
+    cands = cands.sort_values(
+        ["_dgap", "strike"], ascending=[True, right == "P"]
+    )
+    row = cands.iloc[0]
+    return {{"expiry": row["expiry"], "strike": float(row["strike"]),
+             "right": right, "credit": float(row["mid"])}}
+
+
+def generate_option_orders(df, chains):
+    """Auto-generated options strategy: {kind_desc}, ~{target_delta:g}-delta,
+    ~{target_dte}-DTE. Management before expiry each bar; assignment by
+    moneyness at expiry; entries gated by the strategy's conditions."""
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("options strategies need datetime-indexed bars")
+{gate_call}
+    orders = []
+    state = {start_state}
+    pos = None
+
+    def emit(d, action, price, p=None, st=None):
+        src = p if p is not None else pos
+        orders.append({{
+            "date": d, "action": action,
+            "right": src["right"] if src else None,
+            "strike": src["strike"] if src else None,
+            "expiry": src["expiry"] if src else None,
+            "price": price, "state": st if st is not None else state,
+        }})
+
+    for d in df.index:
+        ch_d = chains[chains["date"] == d]
+        px = float(df.at[d, "close"])
+
+        if pos is not None:
+            row = ch_d[(ch_d["expiry"] == pos["expiry"])
+                       & (ch_d["strike"] == pos["strike"])
+                       & (ch_d["right"] == pos["right"])]
+            mid = float(row.iloc[0]["mid"]) if len(row) else None
+            dte_left = (pd.to_datetime(pos["expiry"]) - d).days
+            closed = False
+            if mid is not None:
+                if {profit} > 0 and mid <= pos["credit"] * (1 - {profit} / 100.0):
+                    emit(d, "close", mid)
+                    closed = True
+                elif {loss} > 0 and mid >= pos["credit"] * (1 + {loss} / 100.0):
+                    emit(d, "close", mid)
+                    closed = True
+                elif {close_dte} > 0 and dte_left <= {close_dte}:
+                    emit(d, "close", mid)
+                    closed = True
+                elif {roll_dte} > 0 and dte_left <= {roll_dte}:
+                    emit(d, "roll_close", mid)
+                    new = _prior_pick(ch_d, pos["right"], {target_delta}, {target_dte}, d)
+                    if new is not None:
+                        pos = new
+                        emit(d, "roll_open", new["credit"])
+                        continue
+                    closed = True
+            if closed:
+                state = "long_stock" if pos["right"] == "C" else "cash"
+                pos = None
+            elif dte_left <= 0:
+                if pos["right"] == "P":
+                    if px < pos["strike"]:
+                        emit(d, "assigned", pos["strike"], st={assigned_state})
+                        state = {assigned_state}
+                    else:
+                        emit(d, "expired", 0.0, st="cash")
+                        state = "cash"
+                else:
+                    if px >= pos["strike"]:
+                        emit(d, "called_away", pos["strike"], st="cash")
+                        state = "cash"
+                    else:
+                        emit(d, "expired", 0.0, st="long_stock")
+                        state = "long_stock"
+                pos = None
+
+        if pos is None and bool(gate.get(d, False)):
+            if state == "cash" and {put_enabled}:
+                new = _prior_pick(ch_d, "P", {target_delta}, {target_dte}, d)
+                if new is not None:
+                    pos = new
+                    state = "short_put"
+                    emit(d, "sell_put", new["credit"])
+            elif state == "long_stock" and {call_enabled}:
+                new = _prior_pick(ch_d, "C", {target_delta}, {target_dte}, d)
+                if new is not None:
+                    pos = new
+                    state = "short_call"
+                    emit(d, "sell_call", new["credit"])
+
+    return pd.DataFrame(orders, columns=["date", "action", "right", "strike", "expiry", "price", "state"])
+'''
+
 def _metric_code(metric: Dict[str, Any]) -> str:
     """Emit the body of a per-ticker metric function: df -> pd.Series."""
     name = metric["name"]
@@ -1286,6 +1465,9 @@ def compile_strategy(strategy: Dict[str, Any]) -> str:
              **({"timeframe": c["timeframe"]} if c.get("timeframe") else {})}
             for c in (lst or [])
         ]
+
+    if strategy.get("options"):
+        return generate_options_code(strategy["options"], risk=strategy.get("risk"))
 
     if strategy.get("exits"):  # long+short strategy
         ex_l = dict(strategy["exits"]["long"])

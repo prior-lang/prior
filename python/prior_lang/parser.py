@@ -18,7 +18,7 @@ from .errors import PriorError
 from .lexer import LogicalLine, Token, tokenize
 from .tags import DOLLAR, MULT, NUMBER, PERCENT, TAGS, WORD, TagSpec
 
-VERSION = "0.6"
+VERSION = "0.7"
 
 _BOLLINGER = {"lower_bollinger": "lower", "middle_bollinger": "middle", "upper_bollinger": "upper"}
 _PREDICATE_MAP = {
@@ -93,6 +93,13 @@ class Program:
     rank_where_logic: str = "all"
     rank_where_terms: list = field(default_factory=list)
     rank_weight_metric: TagNode | None = None   # None = equal weighting
+    opt_form: str | None = None          # "wheel" | "rules" (None = not an options strategy)
+    opt_params: dict = field(default_factory=dict)       # wheel: {delta, dte}
+    opt_option: TagNode | None = None    # write-rule option tag (csp / covered_call)
+    opt_entry_logic: str = "all"
+    opt_entry_terms: list = field(default_factory=list)  # wheel where / write-rule when
+    mgmt_close_terms: list = field(default_factory=list)
+    mgmt_roll_terms: list = field(default_factory=list)
     scoped_ticker: str | None = None
     source_name: str = "<string>"
 
@@ -100,6 +107,58 @@ class Program:
         return {"name": tag.name, "params": {k: v for k, v in tag.params.items()}}
 
     def to_json(self) -> dict:
+        if self.opt_form is not None:
+            if self.universe_tag is not None:
+                universe = {"type": "prebuilt", "key": self.universe_tag.name}
+            else:
+                universe = {"type": "manual", "tickers": list(self.universe_tickers) or [self.scoped_ticker]}
+            mgmt: dict = {}
+            for t in self.mgmt_close_terms:
+                if t.name == "profit":
+                    mgmt["profit_pct"] = t.params["value"]
+                elif t.name == "loss":
+                    mgmt["loss_pct"] = t.params["value"]
+                elif t.name == "dte":
+                    mgmt["close_dte"] = int(t.params["days"])
+            for t in self.mgmt_roll_terms:
+                mgmt["roll_dte"] = int(t.params["days"])
+            if self.opt_form == "wheel":
+                option = {"type": "wheel",
+                          "delta": float(self.opt_params.get("delta", 25)),
+                          "dte": int(self.opt_params.get("dte", 45))}
+            else:
+                option = {"type": self.opt_option.name,
+                          "delta": float(self.opt_option.params.get("delta", 25)),
+                          "dte": int(self.opt_option.params.get("dte", 45))}
+            out = {
+                "version": VERSION,
+                "name": self.name,
+                "universe": universe,
+                "timeframe": self.timeframe or "1d",
+                "options": {
+                    "form": self.opt_form,
+                    "option": option,
+                    "entry": {
+                        "match_logic": self.opt_entry_logic,
+                        "conditions": [_desugar(t) for t in self.opt_entry_terms],
+                    },
+                    "management": mgmt,
+                },
+            }
+            risk = {}
+            for t in self.risk_tags:
+                if t.name == "contracts":
+                    risk["contracts"] = int(t.params["count"])
+                elif t.name == "collateral":
+                    risk["collateral_pct"] = t.params["value"] / 100.0
+                elif t.name == "max_positions":
+                    risk["max_positions"] = int(t.params["value"])
+                elif t.name == "cooldown":
+                    risk["cooldown_bars"] = int(t.params["bars"])
+            if risk:
+                out["risk"] = risk
+            return out
+
         if self.rank_select is not None:
             if self.universe_tag is not None:
                 universe = {"type": "prebuilt", "key": self.universe_tag.name}
@@ -913,10 +972,26 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
             rule_logic = logic or "all"
             rule_terms = terms
             buy = cur.peek()
-            if buy is None or not (buy.kind == "keyword" and buy.value in ("buy", "short")):
-                cur.err("the entry rule ends with an action: buy [sizing] or short [sizing]",
+            if buy is None or not (buy.kind == "keyword" and buy.value in ("buy", "short", "write")):
+                cur.err("the entry rule ends with an action: buy [sizing], short [sizing], or write [csp ...]",
                         suggestion="e.g. buy [10% portfolio]")
             cur.next()
+            if buy.value == "write":
+                if prog.opt_form is not None:
+                    cur.err("one option rule (or one wheel) per strategy for now", tok=buy)
+                otag = _parse_tag(cur)
+                if otag.spec is None or otag.spec.kind != "option":
+                    cur.err(f"write takes an option tag, not [{otag.name}]", tok=buy,
+                            suggestion="write [csp delta=25 dte=45] or write [covered_call delta=25 dte=45]")
+                prog.opt_form = "rules"
+                prog.opt_option = otag
+                prog.opt_entry_logic = rule_logic
+                prog.opt_entry_terms = rule_terms
+                if not cur.at_end():
+                    cur.err("nothing may follow the option tag on the entry rule")
+                seen.add("when")
+                seen.add("if")
+                continue
             rule_direction = "long" if buy.value == "buy" else "short"
             if not prog.rules:
                 prog.direction = rule_direction
@@ -1035,6 +1110,71 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
                     cur.err(f"unexpected {tok.raw!r} after the hold rule")
             seen.add("hold")
 
+        elif kw == "wheel":
+            tok = cur.peek()
+            if tok is None or tok.kind != "lbrack":
+                cur.err("wheel takes its coordinates in brackets: wheel [delta=25 dte=45]", tok=head)
+            cur.next()
+            params = {"delta": 25.0, "dte": 45.0}
+            while True:
+                t = cur.peek()
+                if t is None:
+                    cur.err("unclosed '[' in the wheel parameters", tok=head)
+                if t.kind == "rbrack":
+                    cur.next()
+                    break
+                if t.kind in ("word", "keyword") and str(t.value) in ("delta", "dte"):
+                    key_tok = cur.next()
+                    eq = cur.peek()
+                    if eq is None or eq.kind != "eq":
+                        cur.err(f"wheel parameters are named: [{key_tok.raw}=25]", tok=key_tok)
+                    cur.next()
+                    val = cur.next()
+                    if val.kind != "number":
+                        cur.err(f"{key_tok.raw} takes a number", tok=val)
+                    params[str(key_tok.value)] = float(val.value)
+                else:
+                    cur.err("wheel knows delta and dte: wheel [delta=25 dte=45]", tok=t)
+            prog.opt_form = "wheel"
+            prog.opt_params = params
+            tok = cur.peek()
+            if tok is not None and tok.kind == "keyword" and tok.value == "where":
+                cur.next()
+                node = _parse_expr(cur)
+                logic, terms = _flatten(node, cur)
+                prog.opt_entry_logic = logic or "all"
+                prog.opt_entry_terms = terms
+            if not cur.at_end():
+                cur.err("unexpected tokens after the wheel statement")
+            seen.add("wheel")
+
+        elif kw == "close":
+            tok = cur.next()
+            if not (tok.kind == "keyword" and tok.value == "at"):
+                cur.err("close reads: close at [profit 50%] or [dte 21]", tok=head)
+            node = _parse_expr(cur)
+            logic, terms = _flatten(node, cur)
+            if logic == "all" and len(terms) > 1:
+                cur.err("close triggers combine with 'or'", tok=head)
+            for t in terms:
+                tag = t.tag if isinstance(t, Predicate) else (t if isinstance(t, TagNode) else None)
+                if tag is None or tag.spec is None or tag.spec.kind != "management":
+                    cur.err("close at takes management tags: [profit 50%], [loss 200%], [dte 21]", tok=head)
+            prog.mgmt_close_terms = [t.tag if isinstance(t, Predicate) else t for t in terms]
+            seen.add("close")
+
+        elif kw == "roll":
+            tok = cur.next()
+            if not (tok.kind == "keyword" and tok.value == "at"):
+                cur.err("roll reads: roll at [dte 21]", tok=head)
+            tag = _parse_tag(cur)
+            if tag.name != "dte":
+                cur.err("roll at takes [dte N]", tok=head)
+            prog.mgmt_roll_terms = [tag]
+            if not cur.at_end():
+                cur.err("roll takes a single [dte N] trigger")
+            seen.add("roll")
+
         elif kw == "risk":
             while not cur.at_end():
                 tok = cur.peek()
@@ -1081,6 +1221,36 @@ def _check_condition_timeframes(prog: Program, conditions: list) -> None:
 
 
 def _validate(prog: Program):
+    if prog.opt_form is not None:
+        if prog.rules or prog.exit_terms or prog.exit_short_terms or prog.partial_terms or prog.rank_select:
+            raise PriorError(
+                "an options strategy stands alone — no buy/short rules, sell/cover exits, or hold alongside it"
+            )
+        tickers = set()
+        for t in prog.opt_entry_terms:
+            if isinstance(t, Comparison) and isinstance(t.left, tuple) and t.left[0] == "ticker":
+                tickers.add(t.left[1])
+        if len(tickers) > 1:
+            raise PriorError("options strategies are single-ticker for now")
+        if tickers:
+            if prog.universe_tag is not None or prog.universe_tickers:
+                raise PriorError("use either a universe statement or an inline $TICKER, not both")
+            prog.scoped_ticker = tickers.pop()
+        elif prog.universe_tag is not None:
+            raise PriorError(
+                "options strategies are single-ticker for now — universe $F, or an inline $TICKER"
+            )
+        elif len(prog.universe_tickers) != 1:
+            raise PriorError(
+                "options strategies are single-ticker for now — universe $F, or an inline $TICKER"
+            )
+        for t in prog.opt_entry_terms:
+            _desugar(t)
+        conds = [_desugar(t) for t in prog.opt_entry_terms]
+        _check_condition_timeframes(prog, conds)
+        return
+    if prog.mgmt_close_terms or prog.mgmt_roll_terms:
+        raise PriorError("close at / roll at manage option positions — add a wheel or a write rule")
     if prog.rank_select is not None:
         if prog.entry_terms or prog.exit_terms or prog.sizing is not None:
             raise PriorError(
