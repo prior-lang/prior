@@ -239,6 +239,8 @@ class Program:
                 risk["daily_loss_limit_usd"] = t.params["value"]
             elif t.name == "cooldown":
                 risk["cooldown_bars"] = int(t.params["bars"])
+            elif t.name == "reverse":
+                risk["reverse"] = True
 
         out = {
             "version": VERSION,
@@ -1292,10 +1294,8 @@ def _validate(prog: Program):
             )
         if prog.universe_tag is None and not prog.universe_tickers:
             raise PriorError("ranking strategies need a universe — add: universe [sp_top_30]")
-        for t in prog.rank_where_terms:
-            c = _desugar(t)
-            if c.get("timeframe"):
-                raise PriorError("'on <timeframe>' inside hold where-filters is coming later")
+        where_conds = [_desugar(t) for t in prog.rank_where_terms]
+        _check_condition_timeframes(prog, where_conds)
         return
     if prog.rebalance is not None:
         raise PriorError("rebalance only applies to ranking strategies — add: hold top N by [metric]")
@@ -1304,6 +1304,10 @@ def _validate(prog: Program):
     if not prog.exit_terms and not prog.exit_short_terms:
         exit_kw = "cover" if prog.direction == "short" else "sell"
         raise PriorError(f"the strategy has no exit rule — add: {exit_kw} when <condition or exit tags>")
+    if any(t.name == "reverse" for t in prog.risk_tags) and prog.direction != "mixed":
+        raise PriorError(
+            "risk [reverse] flips into the opposite position — it needs both a long and a short rule"
+        )
     if prog.direction == "mixed":
         if not prog.exit_terms:
             raise PriorError("a strategy with long rules needs a sell rule")

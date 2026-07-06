@@ -280,6 +280,8 @@ def explain_strategy(strategy: dict) -> str:
             risk_parts.append(f"at most {_plural(risk['max_positions'], 'open position')}")
         if "cooldown_bars" in risk:
             risk_parts.append(f"no re-entry for {_plural(risk['cooldown_bars'], 'bar')} after an exit")
+        if risk.get("reverse"):
+            risk_parts.append("an opposite signal closes the position and reverses the same bar")
         if risk_parts:
             lines.append("Risk guards: " + "; ".join(risk_parts) + ".")
         return "\n".join(lines)
@@ -326,6 +328,8 @@ def explain_strategy(strategy: dict) -> str:
         risk_parts.append(f"new entries halt after ${_num(risk['daily_loss_limit_usd'])} of daily losses")
     if "cooldown_bars" in risk:
         risk_parts.append(f"no re-entry for {_plural(risk['cooldown_bars'], 'bar')} after an exit")
+    if risk.get("reverse"):
+        risk_parts.append("an opposite signal closes the position and reverses the same bar")
     if risk_parts:
         lines.append("Risk guards: " + "; ".join(risk_parts) + ".")
 

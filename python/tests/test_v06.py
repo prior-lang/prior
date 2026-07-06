@@ -233,3 +233,26 @@ def test_rising_edge_is_one_entry_per_streak():
     # entry b1, exit b2 (1 bar held); condition STILL true b2-b5 but no
     # fresh edge — must stay flat, not machine-gun re-entries
     assert list(sig) == [0, 1, 0, 0, 0, 0]
+
+
+def test_reverse_flips_position_same_bar():
+    src = (
+        "universe $T\n"
+        "when price above 100\n  buy [10% portfolio]\n"
+        "when price below 95\n  short [10% portfolio]\n"
+        "sell when [after 20 bars]\ncover when [after 20 bars]\n"
+        "risk [reverse]\n"
+    )
+    closes = [99, 103, 104, 94, 93, 92, 103, 104]
+    sig = _run(src, closes)
+    assert list(sig) == [0, 1, 1, -1, -1, -1, 1, 1]
+    s = prior_lang.compile_source(src)
+    assert prior_lang.compile_source(strategy_to_source(s)) == s
+
+
+def test_reverse_requires_mixed():
+    with pytest.raises(prior_lang.PriorError, match="both a long and a short"):
+        prior_lang.compile_source(
+            "universe $T\nwhen price above 100\n  buy [10% portfolio]\n"
+            "sell when [after 5 bars]\nrisk [reverse]\n"
+        )

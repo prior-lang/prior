@@ -875,6 +875,7 @@ def generate_mixed_code(
     exit_long: Dict[str, Any],
     exit_short: Dict[str, Any],
     cooldown_bars: int = 0,
+    reverse: bool = False,
     position_sizing: Dict[str, Any] | None = None,
     risk: Dict[str, Any] | None = None,
 ) -> str:
@@ -983,6 +984,26 @@ def generate_mixed_code(
             "                be_armed = True"
         )
 
+    reverse_block = ""
+    if reverse:
+        reverse_block = (
+            "\n        # risk [reverse]: an opposite signal closes and flips the same bar"
+            "\n        if dir > 0 and bool(short_arr[i]) and not bool(long_arr[i]):"
+            "\n            dir = -1"
+            "\n            entry_px = px"
+            "\n            hwm = px"
+            "\n            bars_held = 0" + entry_atr_line.replace("                ", "            ") + be_reset.replace("                ", "            ") +
+            "\n            sig[i] = dir"
+            "\n            continue"
+            "\n        if dir < 0 and bool(long_arr[i]) and not bool(short_arr[i]):"
+            "\n            dir = 1"
+            "\n            entry_px = px"
+            "\n            hwm = px"
+            "\n            bars_held = 0" + entry_atr_line.replace("                ", "            ") + be_reset.replace("                ", "            ") +
+            "\n            sig[i] = dir"
+            "\n            continue"
+        )
+
     cooldown = int(max(0, cooldown_bars))
     cd_init = "\n    cd = 0" if cooldown else ""
     cd_set = f"\n            cd = {cooldown}" if cooldown else ""
@@ -1038,7 +1059,7 @@ def generate_mixed_code(
                 sig[i] = dir
             continue
         bars_held += 1
-        px = close_arr[i]
+        px = close_arr[i]{reverse_block}
         if dir > 0:
             if px > hwm:
                 hwm = px
@@ -1335,16 +1356,19 @@ def generate_ranking_code(
     where_fn = ""
     where_call = "elig[t] = close.notna()"
     if where_conditions:
-        body, expr = _condition_blocks(where_conditions, where_logic, "wcond")
+        helpers, body, expr, wtfs = _split_condition_blocks(where_conditions, where_logic, "wcond")
+        htf = _htf_preamble(wtfs)
         where_fn = (
-            "def _prior_where(df):\n"
-            '    close = df["close"]\n'
-            "\n"
-            f"{body}\n"
-            "\n"
-            f"    return ({expr}).fillna(False)\n"
-            "\n"
-            "\n"
+            helpers
+            + "def _prior_where(df):\n"
+            + '    close = df["close"]\n'
+            + htf
+            + "\n"
+            + f"{body}\n"
+            + "\n"
+            + f"    return ({expr}).fillna(False)\n"
+            + "\n"
+            + "\n"
         )
         where_call = "elig[t] = _prior_where(panel[t]).reindex(closes.index, fill_value=False)"
 
@@ -1541,6 +1565,7 @@ def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False) -> str
             exit_long=ex_l,
             exit_short=ex_s,
             cooldown_bars=(strategy.get("risk") or {}).get("cooldown_bars", 0),
+            reverse=bool((strategy.get("risk") or {}).get("reverse")),
             position_sizing=strategy.get("position_sizing"),
             risk=strategy.get("risk"),
         )
@@ -1555,7 +1580,8 @@ def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False) -> str
             count=ranking.get("count", 5),
             rebalance=strategy.get("rebalance", "monthly"),
             where_conditions=[
-                {"type": c["condition"], "params": c.get("params", {})}
+                {"type": c["condition"], "params": c.get("params", {}),
+                 **({"timeframe": c["timeframe"]} if c.get("timeframe") else {})}
                 for c in where.get("conditions") or []
             ] or None,
             where_logic=where.get("match_logic", "all"),

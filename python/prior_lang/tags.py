@@ -316,6 +316,9 @@ _register(TagSpec(
     name="collateral", kind="risk", usage="n/a",
     positional=[_p("value", PERCENT, required=True)],
 ))
+_register(TagSpec(
+    name="reverse", kind="risk", usage="n/a",
+))
 
 # ── Universe tags ──────────────────────────────────────────────────
 

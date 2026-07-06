@@ -54,12 +54,16 @@ def test_comparison_sides_must_share_timeframe():
         )
 
 
-def test_on_banned_in_hold_where_for_now():
-    with pytest.raises(prior_lang.PriorError, match="coming later"):
-        prior_lang.compile_source(
-            "universe [sp_top_30]\nrebalance monthly\n"
-            "hold top 3 by [momentum 63]\n  where [rsi on 1w] < 70\n"
-        )
+def test_on_in_hold_where_compiles_with_htf_helper():
+    s = prior_lang.compile_source(
+        "universe [sp_top_30]\nrebalance monthly\n"
+        "hold top 3 by [momentum 63]\n  where [rsi on 1w] < 70\n"
+    )
+    [c] = s["ranking"]["where"]["conditions"]
+    assert c["timeframe"] == "1w"
+    code = compile_strategy(s)
+    assert "_prior_htf_wcond_0" in code and "htf_1w" in code
+    assert prior_lang.compile_source(strategy_to_source(s)) == s
 
 
 def test_on_rejected_on_non_condition_tags():

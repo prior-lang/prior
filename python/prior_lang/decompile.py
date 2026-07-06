@@ -269,6 +269,8 @@ def strategy_to_source(strategy: dict) -> str:
             prog.risk_tags.append(_tag("collateral", [("percent", _n(risk["collateral_pct"]) * 100)], params={"value": _n(risk["collateral_pct"]) * 100}))
         if "cooldown_bars" in risk:
             prog.risk_tags.append(_tag("cooldown", [("number", _n(risk["cooldown_bars"]))], params={"bars": risk["cooldown_bars"]}))
+        if risk.get("reverse"):
+            prog.risk_tags.append(_tag("reverse"))
         return format_program(prog)
 
     ranking = strategy.get("ranking")
@@ -362,6 +364,8 @@ def strategy_to_source(strategy: dict) -> str:
             prog.risk_tags.append(_tag("daily_loss", [("dollar", _n(risk["daily_loss_limit_usd"]))]))
         if "cooldown_bars" in risk:
             prog.risk_tags.append(_tag("cooldown", [("number", _n(risk["cooldown_bars"]))], params={"bars": risk["cooldown_bars"]}))
+        if risk.get("reverse"):
+            prog.risk_tags.append(_tag("reverse"))
         return format_program(prog)
 
     ex = strategy.get("exit", {}) or {}
@@ -393,5 +397,7 @@ def strategy_to_source(strategy: dict) -> str:
         prog.risk_tags.append(_tag("daily_loss", [("dollar", _n(risk["daily_loss_limit_usd"]))]))
     if "cooldown_bars" in risk:
         prog.risk_tags.append(_tag("cooldown", [("number", _n(risk["cooldown_bars"]))], params={"bars": risk["cooldown_bars"]}))
+    if risk.get("reverse"):
+        prog.risk_tags.append(_tag("reverse"))
 
     return format_program(prog)
