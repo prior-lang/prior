@@ -1,0 +1,17 @@
+# The volume-confirmed breakout, with a regime gate: a fresh 50-bar high
+# only counts when ADX says the market is actually trending and volume
+# says someone big is participating. Three filters that each kill a
+# different false breakout. Exits stack a hard stop, a trailing stop for
+# the runner, and stochastic exhaustion for the blowoff endings.
+
+strategy "Breakout Regime Rider"
+
+universe [semis]
+timeframe 1d
+
+when [new_high 50] and [adx] > 25 and [volume_spike 2x]
+  buy [risk 1%]
+
+sell when [stoch] crosses below 80
+  or [stop 4%]
+  or [trailing 6%]
