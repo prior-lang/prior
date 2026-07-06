@@ -120,6 +120,12 @@ Readbacks: *"price makes a new {period}-bar closing {high|low}"* · *"price gaps
 
 ---
 
+## Plugin tags (namespaced)
+
+Developers extend the vocabulary without touching the grammar: `prior_lang.plugins.register(PluginTag(...))` (or modules named in `PRIOR_PLUGINS`) adds namespaced predicate tags like `[acme.momo 10]` with their own pandas emitters and explain readbacks. Plugin tags compose with everything — `and`/`or`, `on <tf>`, `where` filters — because they are ordinary condition tags to the compiler. Un-dotted names stay reserved for the core vocabulary; plugin conditions compile only in runtimes where the plugin is registered.
+
+---
+
 ## Cloud-only condition tags
 
 Syntax that parses, validates, formats, and explains everywhere — but whose evaluation needs data that only exists hosted. Local compilation refuses with a pointer to `--cloud` / AutoQuant; the hosted runtime injects the evaluators.

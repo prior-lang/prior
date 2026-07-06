@@ -383,6 +383,9 @@ def _desugar(term) -> dict:
 def _desugar_inner(term) -> dict:
     if isinstance(term, Predicate):
         tag = term.tag
+        if "." in tag.name:
+            # Plugin predicate: the dotted name IS the condition name.
+            return {"condition": tag.name, "params": dict(tag.params)}
         name = _PREDICATE_MAP.get(tag.name)
         if name is None:
             spec = tag.spec
@@ -675,6 +678,12 @@ def _parse_tag(cur: _Cursor) -> TagNode:
         pass
     spec = TAGS.get(name)
     if spec is None:
+        if "." in name:
+            cur.err(
+                f"[{name_tok.raw}] is a namespaced (plugin) tag, but no plugin has registered it",
+                tok=name_tok,
+                suggestion="set PRIOR_PLUGINS=your_module or call prior_lang.plugins.register() first",
+            )
         cur.err(f"[{name_tok.raw}] is not a known tag", tok=name_tok,
                 suggestion=_did_you_mean(name, TAGS.keys()))
 

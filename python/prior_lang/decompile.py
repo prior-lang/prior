@@ -45,6 +45,19 @@ def _condition_to_term_inner(cond: dict):
     name = cond["condition"]
     p = cond.get("params", {}) or {}
 
+    if "." in name:
+        from .tags import TAGS
+        spec = TAGS.get(name)
+        pos = []
+        if spec is not None:
+            for param in spec.positional:
+                v = p.get(param.name)
+                if v is None:
+                    continue
+                if param.required or (param.default is not None and _n(v) != _n(param.default)):
+                    pos.append((param.kind, v if param.kind == "word" else _n(v)))
+        return Predicate(_tag(name, pos, params=dict(p)))
+
     if name == "price_at_bollinger_band":
         band = p.get("band", "upper")
         pos, named = [], {}

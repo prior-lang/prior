@@ -168,9 +168,10 @@ def test_error_carries_line_number():
     assert e.line == 3  # blank first line, universe on 2, entry on 3
 
 
-def test_namespaced_tags_reserved():
+def test_unregistered_namespaced_tag_points_to_plugins():
     e = _err(VALID.replace("[macd_cross_up]", "[acme.momo]"))
-    assert "future version" in e.message
+    assert "plugin" in e.message
+    assert "PRIOR_PLUGINS" in (e.suggestion or "")
 
 
 def test_crypto_majors_universe_and_crypto_ticker():

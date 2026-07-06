@@ -344,6 +344,16 @@ def _hcode(condition: Dict[str, Any]) -> str:
             f"    cond = (obv > obv_avg).fillna(False)"
         )
 
+    if "." in ctype:
+        from .plugins import PLUGIN_TAGS
+        plug = PLUGIN_TAGS.get(ctype)
+        if plug is None:
+            raise ValueError(
+                f"plugin condition {ctype!r} is not registered in this runtime "
+                "(set PRIOR_PLUGINS or call prior_lang.plugins.register())"
+            )
+        return plug.emit(dict(p))
+
     if ctype in ("iv_rank_less_than", "iv_rank_greater_than",
                  "short_interest_less_than", "short_interest_greater_than",
                  "earnings_within", "no_earnings_within"):

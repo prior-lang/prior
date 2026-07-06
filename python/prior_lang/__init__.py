@@ -10,6 +10,7 @@ format_source (→ canonical text), PriorError.
 """
 
 from .decompile import strategy_to_source
+from .plugins import PluginTag, load_env_plugins, register as register_plugin
 from .errors import PriorError
 from .formatter import format_program
 from .parser import Program, parse_source
@@ -17,8 +18,12 @@ from .parser import Program, parse_source
 __version__ = "0.1.0"
 __all__ = [
     "PriorError", "Program", "parse_source", "compile_source",
-    "format_source", "strategy_to_source", "__version__",
+    "format_source", "strategy_to_source", "PluginTag", "register_plugin",
+    "load_env_plugins", "__version__",
 ]
+
+# Auto-discover plugin modules named in PRIOR_PLUGINS (comma-separated).
+load_env_plugins()
 
 
 def compile_source(source: str, filename: str = "<string>") -> dict:

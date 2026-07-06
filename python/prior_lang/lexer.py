@@ -135,11 +135,6 @@ def _lex_line(text: str, lineno: int) -> list[Token]:
         if m:
             raw = m.group()
             low = raw.lower()
-            if "." in low:
-                raise PriorError(
-                    f"namespaced tags like '{raw}' are reserved for third-party tags in a future version",
-                    line=lineno, col=col, source_line=text,
-                )
             kind = "keyword" if low in KEYWORDS else "word"
             tokens.append(Token(kind, low, raw, lineno, col))
             i = m.end()

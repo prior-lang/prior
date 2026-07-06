@@ -41,6 +41,13 @@ def _condition_text_inner(cond: dict) -> str:
     name = cond["condition"]
     p = cond.get("params", {}) or {}
 
+    if "." in name:
+        from .plugins import PLUGIN_TAGS
+        plug = PLUGIN_TAGS.get(name)
+        if plug is not None and plug.readback is not None:
+            return plug.readback(dict(p))
+        return f"{name}({', '.join(f'{k}={v}' for k, v in p.items())})"
+
     if name == "price_at_bollinger_band":
         return (
             f"price touches or crosses the {p.get('band', 'upper')} Bollinger band "
