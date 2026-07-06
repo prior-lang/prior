@@ -1,0 +1,18 @@
+# Volatility compression with confirmation: the bands are at their
+# tightest in six months (energy stored), price holds above VWAP (buyers
+# in control of the average), and OBV says volume is accumulating, not
+# distributing. The exit ladder is all v0.3: a breakeven stop that arms
+# once the trade is 2% in the money, a hard stop denominated in ATR so it
+# breathes with the instrument, and a chandelier trailing off the highs.
+
+strategy "Coiled Spring"
+
+universe [sp_top_30]
+timeframe 1d
+
+when [squeeze] and price above [vwap] and [obv_rising]
+  buy [risk 1%]
+
+sell when [breakeven after 2%]
+  or [stop 2 atr]
+  or [trailing 3 atr]
