@@ -101,11 +101,49 @@ def _cmd_backtest(args) -> int:
         raise SystemExit(
             "prior backtest needs bars: --data bars.csv (columns: date,open,high,low,close,volume)"
         )
-    from .backtest import load_bars, run_backtest, run_universe_backtest  # lazy: needs pandas
+    from .backtest import (  # lazy: needs pandas
+        load_bars, run_backtest, run_ranking_backtest, run_universe_backtest,
+    )
 
     strategy = _load_program(args.file).to_json()
     df = load_bars(args.data)
     name = strategy.get("name") or Path(args.file).stem
+
+    if strategy.get("ranking"):
+        if "ticker" not in df.columns:
+            raise SystemExit(
+                "ranking strategies decide across a universe — the data file "
+                "needs a ticker column (one stacked set of rows per ticker)"
+            )
+        res = run_ranking_backtest(strategy, df)
+        print(f"{name} — portfolio of {res['tickers']} tickers, {res['bars']} bars from {args.data}")
+        rows = [
+            ("Total return", f"{res['total_return_pct']}%"),
+            ("Equal-weight universe", f"{res['equal_weight_universe_pct']}%"),
+            ("CAGR", f"{res['cagr_pct']}%"),
+            ("Sharpe", res["sharpe"]),
+            ("Max drawdown", f"{res['max_drawdown_pct']}%"),
+            ("Rebalances", res["rebalances"]),
+            ("Avg turnover", f"{res['avg_turnover_pct']}%"),
+        ]
+        width = max(len(label) for label, _ in rows)
+        for label, value in rows:
+            print(f"  {label:<{width}}  {value}")
+        if res["holdings"]:
+            pretty = ", ".join(f"{t} {w * 100:.0f}%" for t, w in res["holdings"])
+            print(f"  {'Current holdings':<{width}}  {pretty}")
+        if res["skipped_not_in_universe"]:
+            sk = res["skipped_not_in_universe"]
+            shown = ", ".join(sk[:8]) + (f" (+{len(sk) - 8} more)" if len(sk) > 8 else "")
+            print(f"\n  skipped (in file, not in universe): {shown}")
+        if res["universe_not_in_file"]:
+            print(f"  no data provided for: {', '.join(res['universe_not_in_file'])}")
+        print(
+            "\nNote: universes are today's constituents — long backtests inherit "
+            "survivorship bias.\nPoint-in-time universes and full history: "
+            "prior backtest --cloud (coming soon)"
+        )
+        return 0
 
     if "ticker" in df.columns:
         # Multi-ticker file: independent per-ticker runs across the universe.

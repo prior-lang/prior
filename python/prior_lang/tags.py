@@ -184,6 +184,30 @@ _register(TagSpec(
     named={"period": _p("period", NUMBER, 14), "smooth": _p("smooth", NUMBER, 3)},
 ))
 
+# ── Metric tags (rank/weight metrics for hold strategies) ─────────
+
+_register(TagSpec(
+    name="momentum", kind="metric", usage="n/a",
+    positional=[_p("period", NUMBER, required=True)],
+    named={"skip": _p("skip", NUMBER, 0)},
+))
+_register(TagSpec(
+    name="volatility", kind="metric", usage="n/a",
+    positional=[_p("period", NUMBER, 20)],
+))
+_register(TagSpec(
+    name="inverse_volatility", kind="metric", usage="n/a",
+    positional=[_p("period", NUMBER, 20)],
+))
+_register(TagSpec(
+    name="relative_strength", kind="metric", usage="n/a",
+    positional=[_p("period", NUMBER, 63)],
+))
+_register(TagSpec(
+    name="dollar_volume", kind="metric", usage="n/a",
+    positional=[_p("period", NUMBER, 20)],
+))
+
 # ── Sizing tags (name-first form; the two special forms are handled
 #    directly by the parser: [N% portfolio] and [$N]) ────────────────
 

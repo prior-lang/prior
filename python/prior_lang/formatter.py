@@ -83,6 +83,21 @@ def format_program(prog: Program) -> str:
     if setup:
         blocks.append("\n".join(setup))
 
+    if prog.rank_select is not None:
+        if prog.rebalance:
+            setup.append(f"rebalance {prog.rebalance}")
+            blocks[-1] = "\n".join(setup)  # setup was already appended; refresh
+        hold = f"hold {prog.rank_select} {int(prog.rank_count)} by {_tag(prog.rank_metric)}"
+        if prog.rank_where_terms:
+            joiner = " and " if prog.rank_where_logic == "all" else " or "
+            hold += "\n  where " + joiner.join(_term(t) for t in prog.rank_where_terms)
+        if prog.rank_weight_metric is not None:
+            hold += f"\n  weighted by {_tag(prog.rank_weight_metric)}"
+        blocks.append(hold)
+        if prog.risk_tags:
+            blocks.append("risk " + " ".join(_tag(t) for t in prog.risk_tags))
+        return "\n\n".join(blocks) + "\n"
+
     joiner = " and " if prog.entry_logic == "all" else " or "
     action = "short" if prog.direction == "short" else "buy"
     entry = "when " + joiner.join(_term(t) for t in prog.entry_terms)

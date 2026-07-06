@@ -1,0 +1,11 @@
+# The simplest possible rotation: once a month, hold the three sector
+# ETFs with the strongest six-month momentum. No conditions, no stops —
+# dropping out of the top three IS the exit. This five-line file is a
+# complete, backtestable tactical allocation strategy.
+
+strategy "Monthly Sector Momentum"
+
+universe [etf_sectors]
+rebalance monthly
+
+hold top 3 by [momentum 126]

@@ -137,6 +137,38 @@ def explain_strategy(strategy: dict) -> str:
         tickers = ", ".join(uni.get("tickers", []))
         lines.append(f"Trades {tickers} on {strategy.get('timeframe', '1d')} bars.")
 
+    ranking = strategy.get("ranking")
+    if ranking:
+        m = ranking["metric"]
+        mp = m.get("params", {}) or {}
+        metric_text = {
+            "momentum": lambda: f"{_num(mp.get('period'))}-bar momentum" + (
+                f" (skipping the last {_num(mp.get('skip'))} bars)" if mp.get("skip") else ""),
+            "volatility": lambda: f"{_num(mp.get('period', 20))}-bar volatility",
+            "inverse_volatility": lambda: f"inverse {_num(mp.get('period', 20))}-bar volatility",
+            "relative_strength": lambda: f"{_num(mp.get('period', 63))}-bar strength relative to the universe",
+            "dollar_volume": lambda: f"{_num(mp.get('period', 20))}-bar average dollar volume",
+        }.get(m["name"], lambda: m["name"])()
+        cadence = {"daily": "Each day", "weekly": "Each week", "monthly": "Each month"}[strategy.get("rebalance", "monthly")]
+        pick = "strongest" if ranking.get("select", "top") == "top" else "lowest-ranked"
+        line = (f"{cadence}, hold the {_num(ranking.get('count'))} names with the "
+                f"{'highest' if ranking.get('select') == 'top' else 'lowest'} {metric_text}")
+        where = (ranking.get("where") or {}).get("conditions") or []
+        if where:
+            joiner = " and " if (ranking.get("where") or {}).get("match_logic", "all") == "all" else " or "
+            line += ", considering only names where " + joiner.join(_condition_text(c) for c in where)
+        weighting = ranking.get("weighting") or {}
+        if weighting.get("method") == "by_metric":
+            wm = weighting["metric"]
+            line += f", weighted by {wm['name'].replace('_', ' ')}"
+        else:
+            line += ", equally weighted"
+        lines.append(line + ". Positions change only at rebalance closes; names that no longer qualify are sold.")
+        risk = strategy.get("risk") or {}
+        if "max_position_pct" in risk:
+            lines.append(f"No single position above {_num(risk['max_position_pct'] * 100)}% of equity.")
+        return "\n".join(lines)
+
     direction = strategy.get("direction", "long")
     entry = strategy["entry"]
     joiner = " and " if entry.get("match_logic", "all") == "all" else " or "

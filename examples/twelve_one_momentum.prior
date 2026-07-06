@@ -1,0 +1,15 @@
+# The academic classic: 12-month momentum skipping the most recent month
+# (the skip dodges short-term reversal). A trend gate keeps names below
+# their 200-day out of the book entirely, weights lean toward the calmer
+# names, and no single position may exceed a quarter of the portfolio.
+
+strategy "Twelve Minus One"
+
+universe [sp_top_30]
+rebalance monthly
+
+hold top 5 by [momentum 252 skip=21]
+  where price above [sma 200]
+  weighted by [inverse_volatility 20]
+
+risk [max_position 25%]

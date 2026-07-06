@@ -1,4 +1,4 @@
-# PRIOR Tag Reference — v0.3 (draft)
+# PRIOR Tag Reference — v0.4 (draft)
 
 Every tag in the language, its parameters, defaults, exact semantics, and what it compiles to. This file is the source of truth for the compiler's tag registry, the editor's autocomplete, and the `prior explain` readback strings.
 
@@ -115,6 +115,20 @@ Use bare: `when [macd_cross_up]`. Compiles to `macd_crosses_above_signal` / `mac
 | `[obv_rising]` | predicate | period (20) | `obv_rising` — on-balance volume above its N-bar average |
 
 Readbacks: *"price makes a new {period}-bar closing {high|low}"* · *"price gaps {up|down} at least {N}% at the open"* · *"the last {N} closes were each {higher|lower} than the one before"* · *"price is {above|below} {level}"* · *"ADX({period}) is {above|below} {threshold}"* · *"stochastic %K({period}) {is below|is above|crosses above|crosses below} {threshold}"*.
+
+---
+
+## Metric tags (rank/weight metrics in `hold` strategies)
+
+| Tag | Params (defaults) | Definition |
+|---|---|---|
+| `[momentum N]` | period (required), `skip` (0) | return over the window from N bars ago to `skip` bars ago — classic 12-1 is `[momentum 252 skip=21]` |
+| `[volatility N]` | period (20) | annualized stdev of daily returns |
+| `[inverse_volatility N]` | period (20) | 1 / volatility — for `weighted by` and low-vol ranks |
+| `[relative_strength N]` | period (63) | N-bar return minus the equal-weight universe's N-bar return |
+| `[dollar_volume N]` | period (20) | mean of close × volume — liquidity rank |
+
+Numeric operand tags double as metrics: `hold top 5 by [rsi]` ranks by RSI(14); `[adx]` and `[stoch]` work the same way. The reverse does not hold — `[momentum]` is not a condition.
 
 ---
 

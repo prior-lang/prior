@@ -154,6 +154,28 @@ def _condition_to_term(cond: dict):
     raise PriorError(f"no PRIOR surface syntax for condition '{name}'")
 
 
+def _metric_tag(m: dict) -> TagNode:
+    from .tags import TAGS
+    name = m["name"]
+    p = m.get("params", {}) or {}
+    spec = TAGS.get(name)
+    pos, named = [], {}
+    if spec is not None:
+        for i, param in enumerate(spec.positional):
+            v = p.get(param.name)
+            if v is None:
+                continue
+            if param.required or _n(v) != _n(param.default if param.default is not None else v):
+                pos.append((param.kind, _n(v)))
+        for key, param in spec.named.items():
+            if key in [q.name for q in spec.positional]:
+                continue
+            v = p.get(key)
+            if v is not None and _n(v) != _n(param.default):
+                named[key] = (param.kind, _n(v))
+    return TagNode(name, dict(p), pos_raw=pos, named_raw=named)
+
+
 def strategy_to_source(strategy: dict) -> str:
     """Render strategy JSON as canonical .prior text."""
     prog = Program()
@@ -172,6 +194,27 @@ def strategy_to_source(strategy: dict) -> str:
         prog.timeframe = tf
     elif tf == "1d":
         prog.timeframe = "1d"
+
+    ranking = strategy.get("ranking")
+    if ranking:
+        prog.rebalance = strategy.get("rebalance", "monthly")
+        prog.rank_select = ranking.get("select", "top")
+        prog.rank_count = int(ranking.get("count", 1))
+        prog.rank_metric = _metric_tag(ranking["metric"])
+        where = ranking.get("where") or {}
+        prog.rank_where_logic = where.get("match_logic", "all")
+        prog.rank_where_terms = [_condition_to_term(c) for c in where.get("conditions") or []]
+        weighting = ranking.get("weighting") or {}
+        if weighting.get("method") == "by_metric":
+            prog.rank_weight_metric = _metric_tag(weighting["metric"])
+        risk = strategy.get("risk") or {}
+        if "max_positions" in risk:
+            prog.risk_tags.append(_tag("max_positions", [("number", _n(risk["max_positions"]))]))
+        if "max_position_pct" in risk:
+            prog.risk_tags.append(_tag("max_position", [("percent", _n(risk["max_position_pct"]) * 100)]))
+        if "daily_loss_limit_usd" in risk:
+            prog.risk_tags.append(_tag("daily_loss", [("dollar", _n(risk["daily_loss_limit_usd"]))]))
+        return format_program(prog)
 
     entry = strategy.get("entry", {}) or {}
     prog.entry_logic = entry.get("match_logic", "all")

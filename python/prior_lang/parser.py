@@ -18,7 +18,7 @@ from .errors import PriorError
 from .lexer import LogicalLine, Token, tokenize
 from .tags import DOLLAR, MULT, NUMBER, PERCENT, TAGS, WORD, TagSpec
 
-VERSION = "0.3"
+VERSION = "0.4"
 
 _BOLLINGER = {"lower_bollinger": "lower", "middle_bollinger": "middle", "upper_bollinger": "upper"}
 _PREDICATE_MAP = {
@@ -82,10 +82,59 @@ class Program:
     exit_terms: list = field(default_factory=list)   # Comparison/Predicate/TagNode(exit)
     risk_tags: list[TagNode] = field(default_factory=list)
     exit_keyword: str = "sell"
+    rebalance: str | None = None
+    rank_select: str | None = None       # "top" | "bottom" (None = rules strategy)
+    rank_count: int = 0
+    rank_metric: TagNode | None = None
+    rank_where_logic: str = "all"
+    rank_where_terms: list = field(default_factory=list)
+    rank_weight_metric: TagNode | None = None   # None = equal weighting
     scoped_ticker: str | None = None
     source_name: str = "<string>"
 
+    def _metric_json(self, tag: TagNode) -> dict:
+        return {"name": tag.name, "params": {k: v for k, v in tag.params.items()}}
+
     def to_json(self) -> dict:
+        if self.rank_select is not None:
+            if self.universe_tag is not None:
+                universe = {"type": "prebuilt", "key": self.universe_tag.name}
+            else:
+                universe = {"type": "manual", "tickers": list(self.universe_tickers)}
+            ranking = {
+                "select": self.rank_select,
+                "count": self.rank_count,
+                "metric": self._metric_json(self.rank_metric),
+                "where": {
+                    "match_logic": self.rank_where_logic,
+                    "conditions": [_desugar(t) for t in self.rank_where_terms],
+                },
+                "weighting": (
+                    {"method": "by_metric", "metric": self._metric_json(self.rank_weight_metric)}
+                    if self.rank_weight_metric is not None
+                    else {"method": "equal"}
+                ),
+            }
+            out = {
+                "version": VERSION,
+                "name": self.name,
+                "universe": universe,
+                "timeframe": self.timeframe or "1d",
+                "rebalance": self.rebalance or "monthly",
+                "ranking": ranking,
+            }
+            risk = {}
+            for t in self.risk_tags:
+                if t.name == "max_positions":
+                    risk["max_positions"] = int(t.params["value"])
+                elif t.name == "max_position":
+                    risk["max_position_pct"] = t.params["value"] / 100.0
+                elif t.name == "daily_loss":
+                    risk["daily_loss_limit_usd"] = t.params["value"]
+            if risk:
+                out["risk"] = risk
+            return out
+
         entry_conditions = [_desugar(t) for t in self.entry_terms]
 
         exit_conditions = []
@@ -397,6 +446,21 @@ class _Cursor:
         )
 
 
+_METRIC_CAPABLE_OPERANDS = ("rsi", "adx", "stoch")
+
+
+def _require_metric(cur: _Cursor, tag: TagNode):
+    spec = tag.spec
+    ok = spec is not None and (
+        spec.kind == "metric"
+        or (spec.kind == "condition" and tag.name in _METRIC_CAPABLE_OPERANDS)
+    )
+    if not ok:
+        from .tags import names_of_kind
+        cur.err(f"[{tag.name}] is not a rank metric", 
+                suggestion=_did_you_mean(tag.name, names_of_kind("metric")))
+
+
 def _did_you_mean(name: str, candidates) -> str | None:
     close = difflib.get_close_matches(name, list(candidates), n=1, cutoff=0.6)
     return f"Did you mean [{close[0]}]?" if close else None
@@ -614,12 +678,14 @@ def _parse_term(cur: _Cursor):
     return Comparison(left=left, cmp=cmp, right=right, line=line)
 
 
-def _parse_expr(cur: _Cursor, stop_at_action: bool = False):
+def _parse_expr(cur: _Cursor, stop_at_action: bool = False, stop_words: tuple = ()):
     """Parse an and/or expression into ('all'|'any'|None, [terms])."""
     def and_chain():
         items = [term_node()]
         while True:
             tok = cur.peek()
+            if stop_words and tok is not None and tok.kind == "keyword" and tok.value in stop_words:
+                return ("all", items) if len(items) > 1 else (None, items)
             if tok is not None and tok.kind == "keyword" and tok.value == "and":
                 cur.next()
                 items.append(term_node())
@@ -633,6 +699,8 @@ def _parse_expr(cur: _Cursor, stop_at_action: bool = False):
     while True:
         tok = cur.peek()
         if stop_at_action and tok is not None and tok.kind == "keyword" and tok.value in ("buy", "short"):
+            break
+        if stop_words and tok is not None and tok.kind == "keyword" and tok.value in stop_words:
             break
         if tok is not None and tok.kind == "keyword" and tok.value == "or":
             cur.next()
@@ -686,7 +754,7 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
         if kw in ("buy",):
             cur.err("buy belongs to an entry rule", tok=head,
                     suggestion="when <condition> buy [sizing]")
-        if kw in seen and kw in ("strategy", "universe", "timeframe", "when", "if", "sell", "cover", "risk"):
+        if kw in seen and kw in ("strategy", "universe", "timeframe", "when", "if", "sell", "cover", "risk", "hold", "rebalance"):
             label = "entry (when)" if kw in ("when", "if") else ("exit (sell/cover)" if kw in ("sell", "cover") else kw)
             cur.err(f"more than one {label} statement — multiple rules are coming in v1.1", tok=head)
 
@@ -772,6 +840,54 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
             seen.add("sell")
             seen.add("cover")
 
+        elif kw == "rebalance":
+            tok = cur.next()
+            if not ((tok.kind in ("word", "keyword")) and str(tok.value) in ("daily", "weekly", "monthly")):
+                cur.err("rebalance is daily, weekly, or monthly", tok=tok)
+            prog.rebalance = str(tok.value)
+            seen.add("rebalance")
+
+        elif kw == "hold":
+            sel = cur.next()
+            if not (sel.kind == "keyword" and sel.value in ("top", "bottom")):
+                cur.err("hold reads: hold top 5 by [momentum 63]", tok=sel)
+            count_tok = cur.next()
+            if count_tok.kind != "number" or int(count_tok.value) < 1:
+                cur.err("hold takes a positive count: hold top 5 by [...]", tok=count_tok)
+            by_tok = cur.next()
+            if not (by_tok.kind == "keyword" and by_tok.value == "by"):
+                cur.err("hold reads: hold top 5 by [metric]", tok=by_tok)
+            metric = _parse_tag(cur)
+            _require_metric(cur, metric)
+            prog.rank_select = str(sel.value)
+            prog.rank_count = int(count_tok.value)
+            prog.rank_metric = metric
+            # optional clauses in either order: where <expr>, weighted ...
+            while not cur.at_end():
+                tok = cur.peek()
+                if tok.kind == "keyword" and tok.value == "where":
+                    cur.next()
+                    node = _parse_expr(cur, stop_words=("weighted",))
+                    logic, terms = _flatten(node, cur)
+                    prog.rank_where_logic = logic or "all"
+                    prog.rank_where_terms = terms
+                elif tok.kind == "keyword" and tok.value == "weighted":
+                    cur.next()
+                    nxt = cur.peek()
+                    if nxt is not None and nxt.kind == "keyword" and nxt.value == "equally":
+                        cur.next()
+                        prog.rank_weight_metric = None
+                    elif nxt is not None and nxt.kind == "keyword" and nxt.value == "by":
+                        cur.next()
+                        wtag = _parse_tag(cur)
+                        _require_metric(cur, wtag)
+                        prog.rank_weight_metric = wtag
+                    else:
+                        cur.err("weighted reads: weighted equally, or weighted by [metric]", tok=tok)
+                else:
+                    cur.err(f"unexpected {tok.raw!r} after the hold rule")
+            seen.add("hold")
+
         elif kw == "risk":
             while not cur.at_end():
                 tok = cur.peek()
@@ -794,6 +910,19 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
 
 
 def _validate(prog: Program):
+    if prog.rank_select is not None:
+        if prog.entry_terms or prog.exit_terms or prog.sizing is not None:
+            raise PriorError(
+                "a strategy is rules (when/sell) or ranking (hold), not both — "
+                "hold IS the entry, the exit, and the sizing"
+            )
+        if prog.universe_tag is None and not prog.universe_tickers:
+            raise PriorError("ranking strategies need a universe — add: universe [sp_top_30]")
+        for t in prog.rank_where_terms:
+            _desugar(t)
+        return
+    if prog.rebalance is not None:
+        raise PriorError("rebalance only applies to ranking strategies — add: hold top N by [metric]")
     if not prog.entry_terms:
         raise PriorError("the strategy has no entry rule — add: when <condition> buy [sizing]")
     if not prog.exit_terms:

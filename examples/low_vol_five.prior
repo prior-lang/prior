@@ -1,0 +1,11 @@
+# The low-volatility anomaly: boring wins. Hold bottom, not top — the
+# five names with the LOWEST realized volatility, refreshed monthly.
+# Decades of academic literature say this underperforms in melt-ups and
+# quietly compounds through everything else.
+
+strategy "Low Vol Five"
+
+universe [sp_top_30]
+rebalance monthly
+
+hold bottom 5 by [volatility 60]

@@ -606,8 +606,266 @@ def generate_strategy_code(
     return pd.Series(sig, index=df.index)
 '''
 
+
+
+def _metric_code(metric: Dict[str, Any]) -> str:
+    """Emit the body of a per-ticker metric function: df -> pd.Series."""
+    name = metric["name"]
+    p = metric.get("params", {}) or {}
+
+    if name == "momentum":
+        n = int(p["period"])
+        skip = int(p.get("skip", 0))
+        if skip:
+            return f"    return close.shift({skip}) / close.shift({n}) - 1"
+        return f"    return close / close.shift({n}) - 1"
+    if name == "volatility":
+        n = int(p.get("period", 20))
+        return f"    return close.pct_change().rolling({n}, min_periods={n}).std() * (252 ** 0.5)"
+    if name == "inverse_volatility":
+        n = int(p.get("period", 20))
+        return (
+            f"    vol = close.pct_change().rolling({n}, min_periods={n}).std() * (252 ** 0.5)\n"
+            f"    return 1.0 / vol.replace(0, np.nan)"
+        )
+    if name == "relative_strength":
+        n = int(p.get("period", 63))
+        # Cross-sectional demeaning happens in generate_weights.
+        return f"    return close / close.shift({n}) - 1"
+    if name == "dollar_volume":
+        n = int(p.get("period", 20))
+        return f"    return (close * df['volume']).rolling({n}, min_periods={n}).mean()"
+    if name == "rsi":
+        n = int(p.get("period", 14))
+        return (
+            f"    delta = close.diff()\n"
+            f"    gain = delta.clip(lower=0).rolling({n}, min_periods={n}).mean()\n"
+            f"    loss = (-delta.clip(upper=0)).rolling({n}, min_periods={n}).mean()\n"
+            f"    rs = gain / loss.replace(0, np.nan)\n"
+            f"    return 100 - (100 / (1 + rs))"
+        )
+    if name == "adx":
+        n = int(p.get("period", 14))
+        return (
+            f"    prev_close = close.shift(1)\n"
+            f"    tr = pd.concat([(df['high'] - df['low']),\n"
+            f"                    (df['high'] - prev_close).abs(),\n"
+            f"                    (df['low'] - prev_close).abs()], axis=1).max(axis=1)\n"
+            f"    up_move = df['high'].diff()\n"
+            f"    down_move = -df['low'].diff()\n"
+            f"    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)\n"
+            f"    minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)\n"
+            f"    atr = tr.ewm(alpha=1 / {n}, adjust=False, min_periods={n}).mean()\n"
+            f"    plus_di = 100 * plus_dm.ewm(alpha=1 / {n}, adjust=False, min_periods={n}).mean() / atr\n"
+            f"    minus_di = 100 * minus_dm.ewm(alpha=1 / {n}, adjust=False, min_periods={n}).mean() / atr\n"
+            f"    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)\n"
+            f"    return dx.ewm(alpha=1 / {n}, adjust=False, min_periods={n}).mean()"
+        )
+    if name == "stoch":
+        n = int(p.get("period", 14))
+        s = int(p.get("smooth", 3))
+        return (
+            f"    low_min = df['low'].rolling({n}, min_periods={n}).min()\n"
+            f"    high_max = df['high'].rolling({n}, min_periods={n}).max()\n"
+            f"    k_fast = 100 * (close - low_min) / (high_max - low_min).replace(0, np.nan)\n"
+            f"    return k_fast.rolling({s}, min_periods={s}).mean()"
+        )
+    raise ValueError(f"Unknown rank metric: {name}")
+
+
+def generate_ranking_code(
+    metric: Dict[str, Any],
+    select: str = "top",
+    count: int = 5,
+    rebalance: str = "monthly",
+    where_conditions: List[Dict[str, Any]] | None = None,
+    where_logic: str = "all",
+    weighting: Dict[str, Any] | None = None,
+    max_position_pct: float | None = None,
+) -> str:
+    """Emit generate_weights(panel) for a ranking (hold) strategy.
+
+    panel: dict[ticker -> OHLCV DataFrame]. Returns DataFrame [date x
+    ticker] of portfolio weights; rows sum to <= 1 (shortfall is cash).
+    Rebalance decisions at the close of the last bar of each period;
+    ties break alphabetically; NaN metric or a failed where-filter means
+    ineligible. Universes are today's constituents — long histories
+    inherit survivorship bias (documented in the spec).
+    """
+    if select not in ("top", "bottom"):
+        raise ValueError(f"select must be 'top' or 'bottom', got {select!r}")
+    if rebalance not in ("daily", "weekly", "monthly"):
+        raise ValueError(f"rebalance must be daily/weekly/monthly, got {rebalance!r}")
+    count = int(count)
+    if count < 1:
+        raise ValueError("count must be >= 1")
+
+    metric_body = _metric_code(metric)
+    is_relative = metric["name"] == "relative_strength"
+
+    where_fn = ""
+    where_call = "elig[t] = close.notna()"
+    if where_conditions:
+        body, expr = _condition_blocks(where_conditions, where_logic, "wcond")
+        where_fn = (
+            "def _prior_where(df):\n"
+            '    close = df["close"]\n'
+            "\n"
+            f"{body}\n"
+            "\n"
+            f"    return ({expr}).fillna(False)\n"
+            "\n"
+            "\n"
+        )
+        where_call = "elig[t] = _prior_where(panel[t]).reindex(closes.index, fill_value=False)"
+
+    weight_fn = ""
+    weighting = weighting or {"method": "equal"}
+    by_metric = weighting.get("method") == "by_metric"
+    if by_metric:
+        weight_fn = (
+            "def _prior_weight_metric(df):\n"
+            '    close = df["close"]\n'
+            f"{_metric_code(weighting['metric'])}\n"
+            "\n"
+            "\n"
+        )
+
+    sort_key = "(-kv[1], kv[0])" if select == "top" else "(kv[1], kv[0])"
+    cap = float(max_position_pct) if max_position_pct is not None else 0.0
+
+    if rebalance == "daily":
+        reb_lines = "    reb_dates = list(closes.index)"
+    else:
+        fmt = "%G-%V" if rebalance == "weekly" else "%Y-%m"
+        reb_lines = (
+            "    if isinstance(closes.index, pd.DatetimeIndex):\n"
+            f"        period_key = closes.index.to_series().dt.strftime({fmt!r})\n"
+            "        reb_dates = list(closes.index.to_series().groupby(period_key).tail(1))\n"
+            "    else:\n"
+            "        reb_dates = list(closes.index)"
+        )
+
+    if by_metric:
+        weight_lines = (
+            "        wm_row = wmetric.loc[d]\n"
+            "        wvals = {}\n"
+            "        for t in chosen:\n"
+            "            wv = wm_row.get(t, float('nan'))\n"
+            "            wvals[t] = float(wv) if wv == wv and wv > 0 else 0.0\n"
+            "        total = sum(wvals.values())\n"
+            "        if total <= 0:\n"
+            "            row = {t: 1.0 / len(chosen) for t in chosen}\n"
+            "        else:\n"
+            "            row = {t: v / total for t, v in wvals.items()}"
+        )
+        wmetric_line = (
+            "\n    wmetric = pd.DataFrame({t: _prior_weight_metric(panel[t]) for t in tickers})"
+            ".sort_index().reindex(closes.index)"
+        )
+    else:
+        weight_lines = "        row = {t: 1.0 / len(chosen) for t in chosen}"
+        wmetric_line = ""
+
+    cap_lines = ""
+    if cap:
+        cap_lines = (
+            "\n"
+            "        # Cap per-name weight; redistribute the excess pro-rata once,\n"
+            "        # then cap again — anything still over stays in cash.\n"
+            f"        excess = sum(max(0.0, w - {cap}) for w in row.values())\n"
+            f"        row = {{t: min(w, {cap}) for t, w in row.items()}}\n"
+            "        if excess > 0:\n"
+            f"            headroom = {{t: {cap} - w for t, w in row.items() if w < {cap}}}\n"
+            "            total_head = sum(headroom.values())\n"
+            "            if total_head > 0:\n"
+            "                for t, h in headroom.items():\n"
+            f"                    row[t] = min({cap}, row[t] + excess * (h / total_head))"
+        )
+
+    relative_line = ""
+    if is_relative:
+        relative_line = "\n    metric = metric.sub(metric.mean(axis=1), axis=0)"
+
+    header = (
+        f'    """Auto-generated ranking strategy: hold {select} {count} by '
+        f'{metric["name"]},\n'
+        f"    rebalanced {rebalance}. Ties break alphabetically; NaN metric or a\n"
+        f"    failed filter means ineligible; fewer qualifiers than {count} leaves\n"
+        f'    the remainder in cash."""'
+    )
+
+    return (
+        where_fn
+        + weight_fn
+        + "def _prior_metric(df):\n"
+        + '    close = df["close"]\n'
+        + metric_body
+        + "\n\n\n"
+        + "def generate_weights(panel):\n"
+        + header
+        + "\n"
+        + "    tickers = sorted(panel.keys())\n"
+        + '    closes = pd.DataFrame({t: panel[t]["close"] for t in tickers}).sort_index()\n'
+        + "    metric = pd.DataFrame({t: _prior_metric(panel[t]) for t in tickers}).sort_index()\n"
+        + "    metric = metric.reindex(closes.index)"
+        + relative_line
+        + wmetric_line
+        + "\n"
+        + "    elig = {}\n"
+        + "    for t in tickers:\n"
+        + "        close = closes[t]\n"
+        + f"        {where_call}\n"
+        + "\n"
+        + reb_lines
+        + "\n"
+        + "\n"
+        + "    weights = pd.DataFrame(0.0, index=closes.index, columns=tickers)\n"
+        + "    reb_set = set(reb_dates)\n"
+        + "    for d in reb_dates:\n"
+        + "        candidates = []\n"
+        + "        for t in tickers:\n"
+        + "            v = metric.at[d, t]\n"
+        + "            if v == v and bool(elig[t].loc[d]):\n"
+        + "                candidates.append((t, float(v)))\n"
+        + "        if not candidates:\n"
+        + "            continue\n"
+        + f"        candidates.sort(key=lambda kv: {sort_key})\n"
+        + f"        chosen = [t for t, _ in candidates[:{count}]]\n"
+        + weight_lines
+        + cap_lines
+        + "\n"
+        + "        for t, w in row.items():\n"
+        + "            weights.at[d, t] = w\n"
+        + "\n"
+        + "    # Hold weights between rebalances: rows at non-rebalance dates\n"
+        + "    # forward-fill from the last rebalance.\n"
+        + "    mask = pd.Series([d in reb_set for d in weights.index], index=weights.index)\n"
+        + "    weights = weights.where(mask).ffill().fillna(0.0)\n"
+        + "    return weights\n"
+    )
+
+
 def compile_strategy(strategy: Dict[str, Any]) -> str:
     """Strategy JSON (the parser's output) → Python source string."""
+    ranking = strategy.get("ranking")
+    if ranking:
+        where = ranking.get("where") or {}
+        risk = strategy.get("risk") or {}
+        return generate_ranking_code(
+            metric=ranking["metric"],
+            select=ranking.get("select", "top"),
+            count=ranking.get("count", 5),
+            rebalance=strategy.get("rebalance", "monthly"),
+            where_conditions=[
+                {"type": c["condition"], "params": c.get("params", {})}
+                for c in where.get("conditions") or []
+            ] or None,
+            where_logic=where.get("match_logic", "all"),
+            weighting=ranking.get("weighting"),
+            max_position_pct=risk.get("max_position_pct"),
+        )
+
     entry = strategy["entry"]
     exit_rule = strategy.get("exit", {}) or {}
     return generate_strategy_code(

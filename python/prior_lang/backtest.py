@@ -162,3 +162,69 @@ def run_backtest(strategy: dict, df) -> dict:
         "win_rate_pct": round(100 * len(wins) / len(trades), 2) if trades else None,
         "avg_trade_pct": round(100 * sum(trades) / len(trades), 3) if trades else None,
     }
+
+
+def run_ranking_backtest(strategy: dict, df) -> dict:
+    """Portfolio backtest for a ranking (hold) strategy over a multi-ticker
+    frame. Joint semantics: weights come from generate_weights, equity is
+    the weighted sum of per-ticker returns, and turnover (mean |weight
+    change| per rebalance) stands in for cost-awareness until cost
+    modeling exists."""
+    pd, np = _require_pandas()
+    from .codegen import compile_strategy
+
+    panel = {
+        str(t).upper(): g.drop(columns=["ticker"]).sort_index()
+        for t, g in df.groupby(df["ticker"].str.upper())
+    }
+    universe = resolve_universe_tickers(strategy)
+    skipped, missing = [], []
+    if universe is not None:
+        skipped = sorted(set(panel) - set(universe))
+        missing = sorted(set(universe) - set(panel))
+        panel = {t: v for t, v in panel.items() if t in set(universe)}
+    if not panel:
+        raise SystemExit("no tickers in the data file match the strategy's universe")
+
+    code = compile_strategy(strategy)
+    namespace = {"pd": pd, "np": np, "math": math}
+    exec(code, namespace)  # our own generated code
+    weights = namespace["generate_weights"](panel)
+
+    closes = pd.DataFrame({t: p["close"] for t, p in panel.items()}).sort_index()
+    rets = closes.pct_change().fillna(0)
+    port_rets = (weights.shift(1).fillna(0) * rets).sum(axis=1)
+    equity = (1 + port_rets).cumprod()
+
+    turnover = weights.diff().abs().sum(axis=1)
+    reb_turnover = turnover[turnover > 1e-12]
+
+    total_return = float(equity.iloc[-1] - 1)
+    years = max(len(closes) / 252.0, 1e-9)
+    cagr = float((1 + total_return) ** (1 / years) - 1) if total_return > -1 else -1.0
+    sharpe = float(port_rets.mean() / port_rets.std() * (252 ** 0.5)) if port_rets.std() > 0 else 0.0
+    running_max = equity.cummax()
+    max_dd = float((equity / running_max - 1).min())
+    bench = rets.mean(axis=1)
+    bench_total = float((1 + bench).cumprod().iloc[-1] - 1)
+
+    final = weights.iloc[-1]
+    holdings = sorted(
+        ((t, float(w)) for t, w in final.items() if w > 1e-9),
+        key=lambda kv: -kv[1],
+    )
+
+    return {
+        "bars": len(closes),
+        "tickers": len(panel),
+        "total_return_pct": round(total_return * 100, 2),
+        "equal_weight_universe_pct": round(bench_total * 100, 2),
+        "cagr_pct": round(cagr * 100, 2),
+        "sharpe": round(sharpe, 3),
+        "max_drawdown_pct": round(max_dd * 100, 2),
+        "rebalances": int(len(reb_turnover)),
+        "avg_turnover_pct": round(float(reb_turnover.mean()) * 100, 2) if len(reb_turnover) else 0.0,
+        "holdings": holdings,
+        "skipped_not_in_universe": skipped,
+        "universe_not_in_file": missing,
+    }
