@@ -534,7 +534,7 @@ def generate_strategy_code(
         entries_name = "entries" if not multi_rule else f"entries_r{r}"
         body += (
             f"\n\n    {combined_name} = ({expr}).fillna(False)\n"
-            f"    {entries_name} = {combined_name} & ~{combined_name}.shift(1).fillna(False)"
+            f"    {entries_name} = {combined_name} & ~{combined_name}.shift(1, fill_value=False)"
         )
         entry_bodies.append(body)
         edge_names.append(entries_name)
@@ -791,6 +791,255 @@ def generate_strategy_code(
 '''
 
 
+
+
+def _dir_check_exprs(ex: Dict[str, Any], is_short: bool) -> Dict[str, str]:
+    """Per-direction exit-check expressions for one exit spec."""
+    stop = float(ex.get("stop_loss_pct") or 0.0)
+    target = float(ex.get("profit_target_pct") or 0.0)
+    trail = float(ex.get("trailing_stop_pct") or 0.0)
+    stop_a = float(ex.get("stop_loss_atr") or 0.0)
+    target_a = float(ex.get("profit_target_atr") or 0.0)
+    trail_a = float(ex.get("trailing_stop_atr") or 0.0)
+    be = float(ex.get("breakeven_trigger_pct") or 0.0)
+    hold = int(ex.get("hold_bars") or DEFAULT_HOLD_BARS)
+
+    if is_short:
+        out = {
+            "stop": f"px >= entry_px * (1 + {stop} / 100.0)" if stop else "",
+            "stop_a": f"not np.isnan(entry_atr) and px >= entry_px + {stop_a} * entry_atr" if stop_a else "",
+            "target": f"px <= entry_px * (1 - {target} / 100.0)" if target else "",
+            "target_a": f"not np.isnan(entry_atr) and px <= entry_px - {target_a} * entry_atr" if target_a else "",
+            "trail": f"px >= hwm * (1 + {trail} / 100.0)" if trail else "",
+            "trail_a": f"not np.isnan(atr_arr[i]) and px >= hwm + {trail_a} * atr_arr[i]" if trail_a else "",
+            "be_arm": f"px <= entry_px * (1 - {be} / 100.0)" if be else "",
+            "be_exit": "px >= entry_px" if be else "",
+        }
+    else:
+        out = {
+            "stop": f"px <= entry_px * (1 - {stop} / 100.0)" if stop else "",
+            "stop_a": f"not np.isnan(entry_atr) and px <= entry_px - {stop_a} * entry_atr" if stop_a else "",
+            "target": f"px >= entry_px * (1 + {target} / 100.0)" if target else "",
+            "target_a": f"not np.isnan(entry_atr) and px >= entry_px + {target_a} * entry_atr" if target_a else "",
+            "trail": f"px <= hwm * (1 - {trail} / 100.0)" if trail else "",
+            "trail_a": f"not np.isnan(atr_arr[i]) and px <= hwm - {trail_a} * atr_arr[i]" if trail_a else "",
+            "be_arm": f"px >= entry_px * (1 + {be} / 100.0)" if be else "",
+            "be_exit": "px <= entry_px" if be else "",
+        }
+    out["hold"] = str(hold)
+    out["needs_atr"] = bool(stop_a or target_a or trail_a)
+    out["has_be"] = bool(be)
+    return out
+
+
+def _dir_chain(exprs: Dict[str, str], cond_arr: str, indent: str) -> str:
+    checks = []
+    for key in ("stop", "stop_a"):
+        if exprs[key]:
+            checks.append(exprs[key])
+    if exprs["has_be"]:
+        checks.append(f"be_armed and {exprs['be_exit']}")
+    for key in ("target", "target_a", "trail", "trail_a"):
+        if exprs[key]:
+            checks.append(exprs[key])
+    checks.append(f"{cond_arr}[i]")
+    checks.append(f"bars_held >= {exprs['hold']}")
+    lines = []
+    for idx, chk in enumerate(checks):
+        kw = "if" if idx == 0 else "elif"
+        lines.append(f"{indent}{kw} {chk}:")
+        lines.append(f"{indent}    exit_now = True")
+    return "\n".join(lines)
+
+
+def generate_mixed_code(
+    rules: List[Dict[str, Any]],
+    exit_long: Dict[str, Any],
+    exit_short: Dict[str, Any],
+    cooldown_bars: int = 0,
+    position_sizing: Dict[str, Any] | None = None,
+    risk: Dict[str, Any] | None = None,
+) -> str:
+    """Emit generate_signals for a long+short strategy.
+
+    Long rules' edges enter +1 (closed by the sell spec), short rules'
+    edges enter -1 (closed by the cover spec). One position at a time;
+    while positioned, opposite edges are ignored. A bar where a long edge
+    and a short edge fire together stands aside — deterministic honesty
+    over arbitrary priority. Cooldown applies to all entries.
+    """
+    long_rules = [r for r in rules if r.get("direction", "long") == "long"]
+    short_rules = [r for r in rules if r.get("direction") == "short"]
+    if not long_rules or not short_rules:
+        raise ValueError("generate_mixed_code needs both long and short rules")
+
+    metadata = ""
+    if position_sizing:
+        metadata += f"POSITION_SIZING = {position_sizing!r}\n"
+    sizings = [r.get("position_sizing") for r in rules]
+    if any(s for s in sizings):
+        metadata += f"RULE_SIZING = {sizings!r}\n"
+    if risk:
+        metadata += f"RISK = {risk!r}\n"
+    if metadata:
+        metadata += "\n\n"
+
+    all_helpers = ""
+    tfs: List[str] = []
+
+    def _rules_block(rule_list, tag_prefix, entries_name):
+        nonlocal all_helpers
+        bodies = []
+        edges = []
+        for r, rule in enumerate(rule_list):
+            prefix = f"{tag_prefix}{r}"
+            helpers, body, expr, rtfs = _split_condition_blocks(
+                rule["conditions"], rule.get("match_logic", "all"), prefix
+            )
+            all_helpers += helpers
+            for tf in rtfs:
+                if tf not in tfs:
+                    tfs.append(tf)
+            body += (
+                f"\n\n    combined_{prefix} = ({expr}).fillna(False)\n"
+                f"    edge_{prefix} = combined_{prefix} & ~combined_{prefix}.shift(1, fill_value=False)"
+            )
+            bodies.append(body)
+            edges.append(f"edge_{prefix}")
+        return "\n\n".join(bodies) + f"\n\n    {entries_name} = " + " | ".join(edges)
+
+    long_body = _rules_block(long_rules, "lcond_r", "long_entries")
+    short_body = _rules_block(short_rules, "scond_r", "short_entries")
+
+    def _exit_series(ex, prefix, series_name):
+        nonlocal all_helpers
+        conds = ex.get("conditions") or []
+        if conds:
+            helpers, body, expr, etfs = _split_condition_blocks(conds, "any", prefix)
+            all_helpers += helpers
+            for tf in etfs:
+                if tf not in tfs:
+                    tfs.append(tf)
+            return "\n" + body + "\n", f"    {series_name} = ({expr}).fillna(False)\n"
+        return "", f"    {series_name} = pd.Series(False, index=df.index)\n"
+
+    lx_body, lx_series = _exit_series(exit_long, "xlcond", "exit_long_cond")
+    sx_body, sx_series = _exit_series(exit_short, "xscond", "exit_short_cond")
+
+    lex = _dir_check_exprs(exit_long, is_short=False)
+    sex = _dir_check_exprs(exit_short, is_short=True)
+    long_chain = _dir_chain(lex, "exit_long_arr", "            ")
+    short_chain = _dir_chain(sex, "exit_short_arr", "            ")
+
+    needs_atr = lex["needs_atr"] or sex["needs_atr"]
+    has_be = lex["has_be"] or sex["has_be"]
+
+    atr_block = ""
+    atr_init = ""
+    entry_atr_line = ""
+    if needs_atr:
+        atr_block = (
+            "\n    prev_close_x = close.shift(1)\n"
+            "    tr_x = pd.concat([(df['high'] - df['low']),\n"
+            "                    (df['high'] - prev_close_x).abs(),\n"
+            "                    (df['low'] - prev_close_x).abs()], axis=1).max(axis=1)\n"
+            "    atr_x = tr_x.rolling(14, min_periods=14).mean()\n"
+            "    atr_arr = atr_x.to_numpy()\n"
+        )
+        atr_init = "\n    entry_atr = float('nan')"
+        entry_atr_line = "\n                entry_atr = atr_arr[i]"
+
+    be_init = ""
+    be_reset = ""
+    be_arm_block = ""
+    if has_be:
+        be_init = "\n    be_armed = False"
+        be_reset = "\n                be_armed = False"
+        arm_long = lex["be_arm"] or "False"
+        arm_short = sex["be_arm"] or "False"
+        be_arm_block = (
+            "\n        if not be_armed:\n"
+            f"            if dir > 0 and ({arm_long}):\n"
+            "                be_armed = True\n"
+            f"            elif dir < 0 and ({arm_short}):\n"
+            "                be_armed = True"
+        )
+
+    cooldown = int(max(0, cooldown_bars))
+    cd_init = "\n    cd = 0" if cooldown else ""
+    cd_set = f"\n            cd = {cooldown}" if cooldown else ""
+    cd_gate = (
+        "            if cd > 0:\n"
+        "                cd -= 1\n"
+        "                continue\n"
+        if cooldown else ""
+    )
+
+    htf = _htf_preamble(tfs)
+    n_l = sum(len(r["conditions"]) for r in long_rules)
+    n_s = sum(len(r["conditions"]) for r in short_rules)
+
+    return f'''{metadata}{all_helpers}def generate_signals(df):
+    """Auto-generated long+short strategy: {len(long_rules)} long rule(s)
+    ({n_l} condition(s)) closed by the sell spec, {len(short_rules)} short
+    rule(s) ({n_s} condition(s)) closed by the cover spec. One position at
+    a time; opposite edges while positioned are ignored; simultaneous long
+    and short edges stand aside. Bar-close evaluation throughout."""
+    close = df["close"]
+{htf}
+{long_body}
+
+{short_body}
+{lx_body}
+{lx_series}{sx_body}
+{sx_series}{atr_block}
+    long_arr = long_entries.to_numpy()
+    short_arr = short_entries.to_numpy()
+    exit_long_arr = exit_long_cond.to_numpy()
+    exit_short_arr = exit_short_cond.to_numpy()
+    close_arr = close.to_numpy()
+    n = len(df)
+    sig = np.zeros(n, dtype=int)
+    in_pos = False
+    dir = 0
+    entry_px = 0.0
+    hwm = 0.0
+    bars_held = 0{atr_init}{be_init}{cd_init}
+    for i in range(n):
+        if not in_pos:
+{cd_gate}            le = bool(long_arr[i])
+            se = bool(short_arr[i])
+            if le and se:
+                pass  # conflicting signals this bar: stand aside
+            elif le or se:
+                in_pos = True
+                dir = 1 if le else -1
+                entry_px = close_arr[i]
+                hwm = close_arr[i]
+                bars_held = 0{entry_atr_line}{be_reset}
+                sig[i] = dir
+            continue
+        bars_held += 1
+        px = close_arr[i]
+        if dir > 0:
+            if px > hwm:
+                hwm = px
+        else:
+            if px < hwm:
+                hwm = px{be_arm_block}
+        exit_now = False
+        if dir > 0:
+{long_chain}
+        else:
+{short_chain}
+        if exit_now:
+            in_pos = False
+            sig[i] = 0{cd_set}
+        else:
+            sig[i] = dir
+    return pd.Series(sig, index=df.index)
+'''
+
 def _metric_code(metric: Dict[str, Any]) -> str:
     """Emit the body of a per-ticker metric function: df -> pd.Series."""
     name = metric["name"]
@@ -1031,6 +1280,35 @@ def generate_ranking_code(
 
 def compile_strategy(strategy: Dict[str, Any]) -> str:
     """Strategy JSON (the parser's output) → Python source string."""
+    def _conds(lst):
+        return [
+            {"type": c["condition"], "params": c.get("params", {}),
+             **({"timeframe": c["timeframe"]} if c.get("timeframe") else {})}
+            for c in (lst or [])
+        ]
+
+    if strategy.get("exits"):  # long+short strategy
+        ex_l = dict(strategy["exits"]["long"])
+        ex_s = dict(strategy["exits"]["short"])
+        ex_l["conditions"] = _conds(ex_l.get("conditions"))
+        ex_s["conditions"] = _conds(ex_s.get("conditions"))
+        return generate_mixed_code(
+            rules=[
+                {
+                    "direction": r.get("direction", "long"),
+                    "conditions": _conds(r["conditions"]),
+                    "match_logic": r.get("match_logic", "all"),
+                    "position_sizing": r.get("position_sizing"),
+                }
+                for r in strategy["rules"]
+            ],
+            exit_long=ex_l,
+            exit_short=ex_s,
+            cooldown_bars=(strategy.get("risk") or {}).get("cooldown_bars", 0),
+            position_sizing=strategy.get("position_sizing"),
+            risk=strategy.get("risk"),
+        )
+
     ranking = strategy.get("ranking")
     if ranking:
         where = ranking.get("where") or {}

@@ -1,0 +1,23 @@
+# Mean reversion has two tails, and now one file trades both: buy panic
+# (RSI(2) washed out), short euphoria (RSI(2) pinned), each with its own
+# exit. One position at a time — if a bar somehow screams buy AND short
+# at once, the strategy stands aside rather than guess.
+
+strategy "Fade Both Tails"
+
+universe [mega_tech]
+timeframe 1d
+
+when [rsi 2] < 10
+  buy [5% portfolio]
+
+when [rsi 2] > 90
+  short [5% portfolio]
+
+sell when [rsi 2] > 50
+  or [stop 3%]
+
+cover when [rsi 2] < 50
+  or [stop 3%]
+
+risk [cooldown 3]

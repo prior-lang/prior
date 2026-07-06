@@ -100,9 +100,12 @@ def format_program(prog: Program) -> str:
             blocks.append("risk " + " ".join(_tag(t) for t in prog.risk_tags))
         return "\n\n".join(blocks) + "\n"
 
-    action = "short" if prog.direction == "short" else "buy"
-    rules = prog.rules or [{"logic": prog.entry_logic, "terms": prog.entry_terms, "sizing": prog.sizing}]
+    default_action = "short" if prog.direction == "short" else "buy"
+    rules = prog.rules or [{"logic": prog.entry_logic, "terms": prog.entry_terms,
+                            "sizing": prog.sizing, "direction": prog.direction}]
     for rule in rules:
+        action = "short" if rule.get("direction") == "short" else (
+            default_action if prog.direction != "mixed" else "buy")
         joiner = " and " if rule["logic"] == "all" else " or "
         entry = "when " + joiner.join(_term(t) for t in rule["terms"])
         if rule["sizing"] is not None:
@@ -115,10 +118,17 @@ def format_program(prog: Program) -> str:
         for t in prog.partial_terms[1:]:
             p_lines.append(f"  or {_term(t)}")
         blocks.append("\n".join(p_lines))
-    exit_lines = [f"{exit_kw} when {_term(prog.exit_terms[0])}"]
-    for t in prog.exit_terms[1:]:
-        exit_lines.append(f"  or {_term(t)}")
-    blocks.append("\n".join(exit_lines))
+    if prog.exit_terms:
+        kw = "sell" if prog.direction == "mixed" else exit_kw
+        exit_lines = [f"{kw} when {_term(prog.exit_terms[0])}"]
+        for t in prog.exit_terms[1:]:
+            exit_lines.append(f"  or {_term(t)}")
+        blocks.append("\n".join(exit_lines))
+    if prog.exit_short_terms:
+        exit_lines = [f"cover when {_term(prog.exit_short_terms[0])}"]
+        for t in prog.exit_short_terms[1:]:
+            exit_lines.append(f"  or {_term(t)}")
+        blocks.append("\n".join(exit_lines))
 
     if prog.risk_tags:
         blocks.append("risk " + " ".join(_tag(t) for t in prog.risk_tags))

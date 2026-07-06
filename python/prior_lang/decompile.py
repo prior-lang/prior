@@ -254,6 +254,7 @@ def strategy_to_source(strategy: dict) -> str:
                 "logic": r.get("match_logic", "all"),
                 "terms": [_condition_to_term(c) for c in r["conditions"]],
                 "sizing": _sizing_tag(r.get("position_sizing")),
+                "direction": r.get("direction", strategy.get("direction", "long")),
             }
             for r in strategy["rules"]
         ]
@@ -266,6 +267,40 @@ def strategy_to_source(strategy: dict) -> str:
         if p.get("hold_bars") is not None:
             pterms.append(_tag("after", [("number", _n(p["hold_bars"])), ("word", "bars")]))
         prog.partial_terms = pterms
+
+    def _exit_terms_from_spec(ex):
+        terms: list = [_condition_to_term(c) for c in ex.get("conditions") or []]
+        if ex.get("stop_loss_pct") is not None:
+            terms.append(_tag("stop", [("percent", _n(ex["stop_loss_pct"]))], params={"value": _n(ex["stop_loss_pct"]), "unit": "pct"}))
+        if ex.get("stop_loss_atr") is not None:
+            terms.append(_tag("stop", [("number", _n(ex["stop_loss_atr"])), ("word", "atr")], params={"value": _n(ex["stop_loss_atr"]), "unit": "atr"}))
+        if ex.get("breakeven_trigger_pct") is not None:
+            terms.append(_tag("breakeven", [("word", "after"), ("percent", _n(ex["breakeven_trigger_pct"]))], params={"trigger": _n(ex["breakeven_trigger_pct"])}))
+        if ex.get("profit_target_pct") is not None:
+            terms.append(_tag("target", [("percent", _n(ex["profit_target_pct"]))], params={"value": _n(ex["profit_target_pct"]), "unit": "pct"}))
+        if ex.get("profit_target_atr") is not None:
+            terms.append(_tag("target", [("number", _n(ex["profit_target_atr"])), ("word", "atr")], params={"value": _n(ex["profit_target_atr"]), "unit": "atr"}))
+        if ex.get("trailing_stop_pct") is not None:
+            terms.append(_tag("trailing", [("percent", _n(ex["trailing_stop_pct"]))], params={"value": _n(ex["trailing_stop_pct"]), "unit": "pct"}))
+        if ex.get("trailing_stop_atr") is not None:
+            terms.append(_tag("trailing", [("number", _n(ex["trailing_stop_atr"])), ("word", "atr")], params={"value": _n(ex["trailing_stop_atr"]), "unit": "atr"}))
+        if ex.get("hold_bars") is not None:
+            terms.append(_tag("after", [("number", _n(ex["hold_bars"])), ("word", "bars")]))
+        return terms
+
+    if strategy.get("exits"):
+        prog.exit_terms = _exit_terms_from_spec(strategy["exits"]["long"])
+        prog.exit_short_terms = _exit_terms_from_spec(strategy["exits"]["short"])
+        risk = strategy.get("risk") or {}
+        if "max_positions" in risk:
+            prog.risk_tags.append(_tag("max_positions", [("number", _n(risk["max_positions"]))]))
+        if "max_position_pct" in risk:
+            prog.risk_tags.append(_tag("max_position", [("percent", _n(risk["max_position_pct"]) * 100)]))
+        if "daily_loss_limit_usd" in risk:
+            prog.risk_tags.append(_tag("daily_loss", [("dollar", _n(risk["daily_loss_limit_usd"]))]))
+        if "cooldown_bars" in risk:
+            prog.risk_tags.append(_tag("cooldown", [("number", _n(risk["cooldown_bars"]))], params={"bars": risk["cooldown_bars"]}))
+        return format_program(prog)
 
     ex = strategy.get("exit", {}) or {}
     exit_terms: list = [_condition_to_term(c) for c in ex.get("conditions") or []]

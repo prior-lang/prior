@@ -131,6 +131,21 @@ def _sizing_text(sizing: dict | None, direction: str = "long") -> str:
     return verb
 
 
+def _exit_bits(ex: dict, is_short: bool) -> list:
+    bits = []
+    if ex.get("stop_loss_pct") is not None:
+        bits.append(f"a stop loss {_num(ex['stop_loss_pct'])}% {'above' if is_short else 'below'} entry")
+    if ex.get("stop_loss_atr") is not None:
+        bits.append(f"a stop {_num(ex['stop_loss_atr'])} ATR {'above' if is_short else 'below'} entry")
+    if ex.get("profit_target_pct") is not None:
+        bits.append(f"a target {_num(ex['profit_target_pct'])}% {'below' if is_short else 'above'} entry")
+    for c in ex.get("conditions") or []:
+        bits.append(_condition_text(c))
+    if ex.get("hold_bars") is not None:
+        bits.append(f"a time exit after {_plural(ex['hold_bars'], 'bar')}")
+    return bits
+
+
 def explain_strategy(strategy: dict) -> str:
     lines: list[str] = []
 
@@ -199,6 +214,22 @@ def explain_strategy(strategy: dict) -> str:
         if p.get("hold_bars") is not None:
             p_bits.append(f"after {_plural(p['hold_bars'], 'bar')}")
         lines.append("Takes half off (once per position) at the first of: " + "; ".join(p_bits) + ".")
+
+    if strategy.get("exits"):
+        for label, exd, ishort in (("Longs exit", strategy["exits"]["long"], False),
+                                   ("Shorts cover", strategy["exits"]["short"], True)):
+            bits = _exit_bits(exd, ishort)
+            if bits:
+                lines.append(f"{label} on the first of: " + "; ".join(bits) + ".")
+        risk = strategy.get("risk") or {}
+        risk_parts: list[str] = []
+        if "max_positions" in risk:
+            risk_parts.append(f"at most {_plural(risk['max_positions'], 'open position')}")
+        if "cooldown_bars" in risk:
+            risk_parts.append(f"no re-entry for {_plural(risk['cooldown_bars'], 'bar')} after an exit")
+        if risk_parts:
+            lines.append("Risk guards: " + "; ".join(risk_parts) + ".")
+        return "\n".join(lines)
 
     ex = strategy.get("exit", {}) or {}
     exits: list[str] = []

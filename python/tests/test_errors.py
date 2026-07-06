@@ -144,12 +144,23 @@ def test_multiple_entry_rules_compile():
     assert s["rules"][1]["position_sizing"]["method"] == "fixed_dollar"
 
 
-def test_mixed_direction_rules_rejected():
+def test_mixed_direction_rules_compile_with_both_exits():
+    s = prior_lang.compile_source(
+        "universe [sp_top_30]\nwhen [macd_cross_up]\n  buy [5% portfolio]\n"
+        "when [rsi] > 80\n  short [5% portfolio]\n"
+        "sell when [after 5 bars]\ncover when [after 5 bars]"
+    )
+    assert s["direction"] == "mixed"
+    assert "exits" in s and "exit" not in s
+    assert {r["direction"] for r in s["rules"]} == {"long", "short"}
+
+
+def test_mixed_missing_cover_rejected():
     e = _err(
         "universe [sp_top_30]\nwhen [macd_cross_up]\n  buy [5% portfolio]\n"
         "when [rsi] > 80\n  short [5% portfolio]\nsell when [after 5 bars]"
     )
-    assert "later version" in e.message
+    assert "cover" in e.message
 
 
 def test_error_carries_line_number():

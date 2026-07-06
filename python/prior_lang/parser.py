@@ -82,7 +82,8 @@ class Program:
     direction: str = "long"          # long (buy/sell) | short (short/cover)
     sizing: TagNode | None = None
     partial_terms: list = field(default_factory=list)   # sell half when ...
-    exit_terms: list = field(default_factory=list)   # Comparison/Predicate/TagNode(exit)
+    exit_terms: list = field(default_factory=list)   # sell rule (longs)
+    exit_short_terms: list = field(default_factory=list)  # cover rule (shorts)
     risk_tags: list[TagNode] = field(default_factory=list)
     exit_keyword: str = "sell"
     rebalance: str | None = None
@@ -140,26 +141,16 @@ class Program:
 
         entry_conditions = [_desugar(t) for t in self.entry_terms]
 
-        exit_conditions = []
-        stop = target = trailing = hold = None
-        stop_atr = target_atr = trailing_atr = breakeven = None
-        for t in self.exit_terms:
-            if isinstance(t, TagNode):
-                if t.name in ("stop", "target", "trailing"):
-                    is_atr = t.params.get("unit") == "atr"
-                    v = t.params["value"]
-                    if t.name == "stop":
-                        stop_atr, stop = (v, stop) if is_atr else (stop_atr, v)
-                    elif t.name == "target":
-                        target_atr, target = (v, target) if is_atr else (target_atr, v)
-                    else:
-                        trailing_atr, trailing = (v, trailing) if is_atr else (trailing_atr, v)
-                elif t.name == "breakeven":
-                    breakeven = t.params["trigger"]
-                elif t.name == "after":
-                    hold = int(t.params["bars"])
-            else:
-                exit_conditions.append(_desugar(t))
+        exit_spec = self._exit_json(self.exit_terms)
+        exit_conditions = exit_spec["conditions"]
+        stop = exit_spec["stop_loss_pct"]
+        target = exit_spec["profit_target_pct"]
+        trailing = exit_spec["trailing_stop_pct"]
+        stop_atr = exit_spec["stop_loss_atr"]
+        target_atr = exit_spec["profit_target_atr"]
+        trailing_atr = exit_spec["trailing_stop_atr"]
+        breakeven = exit_spec["breakeven_trigger_pct"]
+        hold = exit_spec["hold_bars"]
 
         if self.universe_tag is not None:
             universe = {"type": "prebuilt", "key": self.universe_tag.name}
@@ -211,12 +202,19 @@ class Program:
         if len(self.rules) > 1:
             out["rules"] = [
                 {
+                    "direction": r.get("direction", self.direction),
                     "match_logic": r["logic"],
                     "conditions": [_desugar(t) for t in r["terms"]],
                     "position_sizing": self._sizing_json(r["sizing"]),
                 }
                 for r in self.rules
             ]
+        if self.direction == "mixed":
+            out["exits"] = {
+                "long": self._exit_json(self.exit_terms),
+                "short": self._exit_json(self.exit_short_terms),
+            }
+            del out["exit"]
         if self.partial_terms:
             p_conditions = []
             p_target = p_hold = None
@@ -237,6 +235,39 @@ class Program:
         if risk:
             out["risk"] = risk
         return out
+
+    def _exit_json(self, terms: list) -> dict:
+        conditions = []
+        stop = target = trailing = hold = None
+        stop_atr = target_atr = trailing_atr = breakeven = None
+        for t in terms:
+            if isinstance(t, TagNode):
+                if t.name in ("stop", "target", "trailing"):
+                    is_atr = t.params.get("unit") == "atr"
+                    v = t.params["value"]
+                    if t.name == "stop":
+                        stop_atr, stop = (v, stop) if is_atr else (stop_atr, v)
+                    elif t.name == "target":
+                        target_atr, target = (v, target) if is_atr else (target_atr, v)
+                    else:
+                        trailing_atr, trailing = (v, trailing) if is_atr else (trailing_atr, v)
+                elif t.name == "breakeven":
+                    breakeven = t.params["trigger"]
+                elif t.name == "after":
+                    hold = int(t.params["bars"])
+            else:
+                conditions.append(_desugar(t))
+        return {
+            "conditions": conditions,
+            "stop_loss_pct": stop,
+            "profit_target_pct": target,
+            "trailing_stop_pct": trailing,
+            "stop_loss_atr": stop_atr,
+            "profit_target_atr": target_atr,
+            "trailing_stop_atr": trailing_atr,
+            "breakeven_trigger_pct": breakeven,
+            "hold_bars": hold,
+        }
 
     def _sizing_json(self, tag: TagNode | None):
         if tag is None:
@@ -837,8 +868,8 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
         if kw in ("buy",):
             cur.err("buy belongs to an entry rule", tok=head,
                     suggestion="when <condition> buy [sizing]")
-        if kw in seen and kw in ("strategy", "universe", "timeframe", "sell", "cover", "risk", "hold", "rebalance"):
-            label = "exit (sell/cover)" if kw in ("sell", "cover") else kw
+        if kw in seen and kw in ("strategy", "universe", "timeframe", "risk", "hold", "rebalance"):
+            label = kw
             cur.err(f"more than one {label} statement — multiple rules are coming in v1.1", tok=head)
 
         if kw == "strategy":
@@ -887,9 +918,10 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
                         suggestion="e.g. buy [10% portfolio]")
             cur.next()
             rule_direction = "long" if buy.value == "buy" else "short"
-            if prog.rules and prog.direction != rule_direction:
-                cur.err("long and short rules in one strategy are coming in a later version", tok=buy)
-            prog.direction = rule_direction
+            if not prog.rules:
+                prog.direction = rule_direction
+            elif prog.direction != rule_direction:
+                prog.direction = "mixed"
             size_tok = cur.peek()
             if size_tok is None or size_tok.kind != "lbrack":
                 cur.err(f"{buy.value} needs a sizing tag", tok=buy,
@@ -901,7 +933,8 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
                         suggestion=f"e.g. {buy.value} [10% portfolio]")
             if not cur.at_end():
                 cur.err("nothing may follow the sizing tag on the entry rule")
-            prog.rules.append({"logic": rule_logic, "terms": rule_terms, "sizing": tag})
+            prog.rules.append({"logic": rule_logic, "terms": rule_terms, "sizing": tag,
+                               "direction": rule_direction})
             if len(prog.rules) == 1:
                 prog.sizing = tag
             else:
@@ -944,9 +977,13 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
                 prog.partial_terms = terms
                 seen.add("partial")
             else:
-                prog.exit_terms = terms
-                seen.add("sell")
-                seen.add("cover")
+                if kw in seen:
+                    cur.err(f"more than one {kw} rule", tok=head)
+                if kw == "cover":
+                    prog.exit_short_terms = terms
+                else:
+                    prog.exit_terms = terms
+                seen.add(kw)
             if not cur.at_end():
                 cur.err("unexpected trailing tokens after the exit rule")
 
@@ -1061,18 +1098,30 @@ def _validate(prog: Program):
         raise PriorError("rebalance only applies to ranking strategies — add: hold top N by [metric]")
     if not prog.entry_terms:
         raise PriorError("the strategy has no entry rule — add: when <condition> buy [sizing]")
-    if not prog.exit_terms:
+    if not prog.exit_terms and not prog.exit_short_terms:
         exit_kw = "cover" if prog.direction == "short" else "sell"
         raise PriorError(f"the strategy has no exit rule — add: {exit_kw} when <condition or exit tags>")
-    if prog.direction == "long" and prog.exit_keyword == "cover":
-        raise PriorError("long strategies exit with sell — cover closes a short")
-    if prog.direction == "short" and prog.exit_keyword == "sell":
-        raise PriorError("short strategies exit with cover — sell closes a long")
+    if prog.direction == "mixed":
+        if not prog.exit_terms:
+            raise PriorError("a strategy with long rules needs a sell rule")
+        if not prog.exit_short_terms:
+            raise PriorError("a strategy with short rules needs a cover rule")
+        if prog.partial_terms:
+            raise PriorError("partial exits in long+short strategies are coming later")
+    elif prog.direction == "long":
+        if prog.exit_short_terms:
+            raise PriorError("long strategies exit with sell — cover closes a short")
+    elif prog.direction == "short":
+        if prog.exit_terms:
+            raise PriorError("short strategies exit with cover — sell closes a long")
+        # downstream (JSON, codegen, formatter) treat the single exit uniformly
+        prog.exit_terms = prog.exit_short_terms
+        prog.exit_short_terms = []
 
     # Inline ticker scoping vs universe statement
     tickers = set()
     rule_terms = [t for r in prog.rules for t in r["terms"]] if prog.rules else list(prog.entry_terms)
-    for t in rule_terms + prog.exit_terms + prog.partial_terms:
+    for t in rule_terms + prog.exit_terms + prog.exit_short_terms + prog.partial_terms:
         if isinstance(t, Comparison) and isinstance(t.left, tuple) and t.left[0] == "ticker":
             tickers.add(t.left[1])
     if len(tickers) > 1:
@@ -1092,17 +1141,19 @@ def _validate(prog: Program):
         )
 
     # Risk-based sizing (in any rule) requires a stop to size against
-    sizings = [r["sizing"] for r in prog.rules] if prog.rules else [prog.sizing]
-    if any(s is not None and s.name == "risk" for s in sizings):
-        has_stop = any(isinstance(t, TagNode) and t.name == "stop" for t in prog.exit_terms)
-        if not has_stop:
-            raise PriorError(
-                "risk-based sizing needs a stop to size against — add [stop x%] to the sell rule"
-            )
+    for r in (prog.rules or [{"sizing": prog.sizing, "direction": prog.direction}]):
+        s = r.get("sizing")
+        if s is not None and s.name == "risk":
+            terms = prog.exit_short_terms if r.get("direction") == "short" and prog.direction == "mixed" else prog.exit_terms
+            kw = "cover" if (r.get("direction") == "short" and prog.direction == "mixed") else "sell"
+            if not any(isinstance(t, TagNode) and t.name == "stop" for t in terms):
+                raise PriorError(
+                    f"risk-based sizing needs a stop to size against — add [stop x%] to the {kw} rule"
+                )
 
     # Desugar everything once so condition-level errors surface at compile time
     all_entry_terms = [t for r in (prog.rules or [{"terms": prog.entry_terms}]) for t in r["terms"]]
     entry_conds = [_desugar(t) for t in all_entry_terms]
-    exit_conds = [_desugar(t) for t in prog.exit_terms if not isinstance(t, TagNode)]
+    exit_conds = [_desugar(t) for t in prog.exit_terms + prog.exit_short_terms if not isinstance(t, TagNode)]
     partial_conds = [_desugar(t) for t in prog.partial_terms if not isinstance(t, TagNode)]
     _check_condition_timeframes(prog, entry_conds + exit_conds + partial_conds)

@@ -30,7 +30,7 @@ def test_example_formats_idempotently(path):
 
 
 def test_examples_exist():
-    assert len(EXAMPLES) == 18
+    assert len(EXAMPLES) == 19
 
 
 def test_bollinger_reversal_compiles_exactly():
