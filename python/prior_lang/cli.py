@@ -302,6 +302,32 @@ def _cmd_backtest(args) -> int:
     return 0
 
 
+def _cmd_sample(args) -> int:
+    from .samples import CATALOG, categories, download, timeframes
+
+    if not args.category:
+        print("Free sample data (real, redistributable bars):\n")
+        width = max(len(f"{c} --timeframe {t}") for c, t in CATALOG)
+        for (cat, tf), entry in CATALOG.items():
+            cmd = f"{cat} --timeframe {tf}" if timeframes(cat)[0] != tf else cat
+            print(f"  prior sample {cmd:<{width}}  {entry['desc']}")
+        print(
+            "\nDownloads land in ./prior-samples/. Options has no free sample:\n"
+            "real chain data cannot be redistributed, and options backtests run\n"
+            "in AutoQuant, not the local CLI."
+        )
+        return 0
+
+    path = download(args.category, args.timeframe)
+    entry_tf = args.timeframe or timeframes(args.category.lower())[0]
+    entry = CATALOG[(args.category.lower(), entry_tf)]
+    print(f"downloaded {path}")
+    print(f"  {entry['desc']}")
+    print(f"  works well with: {entry['try']}")
+    print(f"\nTry it:\n  prior backtest your_strategy.prior --data {path}")
+    return 0
+
+
 def _cmd_trace(args) -> int:
     from .backtest import load_bars  # lazy: needs pandas
     from .trace import trace_report
@@ -392,6 +418,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("explain", help="show every layer: English, JSON, generated Python")
     p.add_argument("file")
     p.set_defaults(fn=_cmd_explain)
+
+    p = sub.add_parser("sample", help="download free sample data (stocks, crypto, forex) to get started instantly")
+    p.add_argument("category", nargs="?", help="stocks | crypto | forex (omit to list the catalog)")
+    p.add_argument("--timeframe", help="bar size where the category offers more than one (e.g. crypto --timeframe 1h)")
+    p.set_defaults(fn=_cmd_sample)
 
     p = sub.add_parser("trace", help="why did/didn't it fire — every condition's verdict on a bar")
     p.add_argument("file")

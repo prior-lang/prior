@@ -52,11 +52,19 @@ prior trace strategy.prior --data bars.csv --date 2026-03-14
 
 Strategies are accepted as `.prior` text or as the interchange `.json` — every verb takes either, and `prior fmt strategy.json` converts JSON back into readable PRIOR text.
 
-Try it immediately with the bundled (synthetic) sample universe:
+Try it immediately with real sample data (free, no account, no API keys):
 
 ```
-prior backtest examples/mega_tech_capitulation.prior --data examples/data/sample_universe.csv
+prior sample                 list what's available
+prior sample crypto          5 years of daily bars for the [crypto_majors] pairs
+prior sample stocks          5 years of daily bars for 20 US large caps
+prior sample forex           5 years of daily closes for 7 majors
+prior sample crypto --timeframe 1h    2 years of hourly bars (multi-timeframe ready)
+
+prior backtest examples/eth_oversold_recovery.prior --data prior-samples/crypto_1d.csv.gz
 ```
+
+There is deliberately no options sample: real chain data cannot be redistributed under any free license, and the local CLI does not backtest options — that runs in AutoQuant. A bundled synthetic universe also ships in `examples/data/` for fully offline use.
 
 Install: `pip install prior-lang` (add `[backtest]` for the backtester's pandas dependency).
 
