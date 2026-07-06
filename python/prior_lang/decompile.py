@@ -109,6 +109,31 @@ def _condition_to_term(cond: dict):
         side = "above" if "above" in name else "below"
         return Comparison(("price",), side, ("number", _n(p["level"])))
 
+    if name in ("price_above_vwap", "price_below_vwap"):
+        side = "above" if "above" in name else "below"
+        pos = []
+        if _n(p.get("period", 20)) != 20:
+            pos.append(("number", _n(p["period"])))
+        return Comparison(("price",), side, _tag("vwap", pos))
+
+    if name == "bollinger_squeeze":
+        pos, named = [], {}
+        if _n(p.get("lookback", 126)) != 126:
+            pos.append(("number", _n(p["lookback"])))
+        if _n(p.get("pct", 10.0)) != 10.0:
+            named["pct"] = ("number", _n(p["pct"]))
+        if _n(p.get("period", 20)) != 20:
+            named["period"] = ("number", _n(p["period"]))
+        if _n(p.get("num_std", 2.0)) != 2.0:
+            named["std"] = ("number", _n(p["num_std"]))
+        return Predicate(_tag("squeeze", pos, named))
+
+    if name == "obv_rising":
+        pos = []
+        if _n(p.get("period", 20)) != 20:
+            pos.append(("number", _n(p["period"])))
+        return Predicate(_tag("obv_rising", pos))
+
     if name in ("adx_greater_than", "adx_less_than"):
         pos = []
         if _n(p.get("period", 14)) != 14:
@@ -166,11 +191,19 @@ def strategy_to_source(strategy: dict) -> str:
     ex = strategy.get("exit", {}) or {}
     exit_terms: list = [_condition_to_term(c) for c in ex.get("conditions") or []]
     if ex.get("stop_loss_pct") is not None:
-        exit_terms.append(_tag("stop", [("percent", _n(ex["stop_loss_pct"]))]))
+        exit_terms.append(_tag("stop", [("percent", _n(ex["stop_loss_pct"]))], params={"value": _n(ex["stop_loss_pct"]), "unit": "pct"}))
+    if ex.get("stop_loss_atr") is not None:
+        exit_terms.append(_tag("stop", [("number", _n(ex["stop_loss_atr"])), ("word", "atr")], params={"value": _n(ex["stop_loss_atr"]), "unit": "atr"}))
+    if ex.get("breakeven_trigger_pct") is not None:
+        exit_terms.append(_tag("breakeven", [("word", "after"), ("percent", _n(ex["breakeven_trigger_pct"]))], params={"trigger": _n(ex["breakeven_trigger_pct"])}))
     if ex.get("profit_target_pct") is not None:
-        exit_terms.append(_tag("target", [("percent", _n(ex["profit_target_pct"]))]))
+        exit_terms.append(_tag("target", [("percent", _n(ex["profit_target_pct"]))], params={"value": _n(ex["profit_target_pct"]), "unit": "pct"}))
+    if ex.get("profit_target_atr") is not None:
+        exit_terms.append(_tag("target", [("number", _n(ex["profit_target_atr"])), ("word", "atr")], params={"value": _n(ex["profit_target_atr"]), "unit": "atr"}))
     if ex.get("trailing_stop_pct") is not None:
-        exit_terms.append(_tag("trailing", [("percent", _n(ex["trailing_stop_pct"]))]))
+        exit_terms.append(_tag("trailing", [("percent", _n(ex["trailing_stop_pct"]))], params={"value": _n(ex["trailing_stop_pct"]), "unit": "pct"}))
+    if ex.get("trailing_stop_atr") is not None:
+        exit_terms.append(_tag("trailing", [("number", _n(ex["trailing_stop_atr"])), ("word", "atr")], params={"value": _n(ex["trailing_stop_atr"]), "unit": "atr"}))
     if ex.get("hold_bars") is not None:
         exit_terms.append(_tag("after", [("number", _n(ex["hold_bars"])), ("word", "bars")]))
     prog.exit_terms = exit_terms

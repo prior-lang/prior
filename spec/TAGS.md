@@ -110,6 +110,9 @@ Use bare: `when [macd_cross_up]`. Compiles to `macd_crosses_above_signal` / `mac
 | `price above 250` / `price below 10` | comparison | level | `price_above_level` / `price_below_level` — absolute price levels |
 | `[adx] > 25` / `[adx] < 15` | operand | period (14) | `adx_greater_than` / `adx_less_than` — Wilder ADX trend-regime filter (threshold 0-100) |
 | `[stoch] < 20`, `> 80`, `crosses above/below N` | operand | period (14), smooth (3) | `stoch_*` family — slow %K vs threshold (0-100) |
+| `price above [vwap]` / `below [vwap 30]` | operand | period (20) | `price_above_vwap` / `price_below_vwap` — rolling volume-weighted typical price |
+| `[squeeze]` | predicate | lookback (126), pct (10), period (20), std (2.0) | `bollinger_squeeze` — band width in its lowest N% of the lookback |
+| `[obv_rising]` | predicate | period (20) | `obv_rising` — on-balance volume above its N-bar average |
 
 Readbacks: *"price makes a new {period}-bar closing {high|low}"* · *"price gaps {up|down} at least {N}% at the open"* · *"the last {N} closes were each {higher|lower} than the one before"* · *"price is {above|below} {level}"* · *"ADX({period}) is {above|below} {threshold}"* · *"stochastic %K({period}) {is below|is above|crosses above|crosses below} {threshold}"*.
 
@@ -135,12 +138,13 @@ Position sized so that if the stop is hit, the loss equals N% of equity: `size =
 
 | Tag | Param | Semantics | Readback |
 |---|---|---|---|
-| `[stop N%]` | percent, required | exit if price falls N% below entry. Max one per strategy. | *"stop loss {N}% below entry"* |
-| `[target N%]` | percent, required | exit if price rises N% above entry | *"take profit {N}% above entry"* |
-| `[trailing N%]` | percent, required | exit if price falls N% from its high-water mark since entry | *"trailing stop {N}% off the high"* |
+| `[stop 1.5%]` or `[stop 2 atr]` | percent OR ATR multiple | exit at N% adverse move from entry, or N× the entry-bar ATR(14). Max one per strategy. | *"stop loss {N}% below entry"* / *"a stop {N} ATR below entry"* |
+| `[target 3%]` or `[target 4 atr]` | percent OR ATR multiple | exit at N% favorable move, or N× entry ATR | *"take profit {N}% above entry"* |
+| `[trailing 2%]` or `[trailing 3 atr]` | percent OR ATR multiple | percent trails the watermark; the ATR form is a chandelier (current ATR off the watermark) | *"trailing stop {N}% off the high"* / *"a chandelier stop {N} ATR off the high"* |
+| `[breakeven after 2%]` | percent, required | once price moves N% in the trade's favor, a return to the entry price exits | *"a breakeven stop armed once {N}% up"* |
 | `[after N bars]` | number + `bars`, required | exit at the close of the Nth bar after entry | *"exit after {N} bars"* |
 
-Evaluation is bar-close (SPEC §6); precedence within a bar: stop → target → trailing → condition exits → after. Exit tags are direction-relative: in a short strategy, `[stop]` is the price rising N% above entry, `[target]` is it falling N% below, and `[trailing]` trails the low-water mark upward.
+Evaluation is bar-close (SPEC §6); precedence within a bar: stop → breakeven → target → trailing → condition exits → after. ATR stops/targets freeze the entry-bar ATR(14); the ATR trailing form uses the current bar's ATR (chandelier). Exit tags are direction-relative: in a short strategy, `[stop]` is the price rising N% above entry, `[target]` is it falling N% below, and `[trailing]` trails the low-water mark upward.
 
 ---
 

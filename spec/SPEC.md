@@ -2,7 +2,7 @@
 
 **PRIOR** — Portable Rules for Indicators, Orders & Risk. A declarative language for expressing trading strategies as testable hypotheses. This spec is the source of truth for the parser, formatter, and compiler. Pre-1.0, breakable with notice.
 
-Status: draft. v0.3 (2026-07-06) adds the vocabulary sweep (new highs/lows, gaps, streaks, price levels, ADX, stochastic). v0.2 (2026-07-06) added short strategies. v0.1 drafted 2026-07-05. Companion documents: `TAGS.md` (tag reference), `../examples/*.prior` (the executable spec — every example must parse, format canonically, and compile).
+Status: draft. v0.3 (2026-07-06) adds the vocabulary sweep (new highs/lows, gaps, streaks, price levels, ADX, stochastic, VWAP, squeeze, OBV) and richer exits (ATR-unit stops/targets, chandelier trailing, breakeven). v0.2 (2026-07-06) added short strategies. v0.1 drafted 2026-07-05. Companion documents: `TAGS.md` (tag reference), `../examples/*.prior` (the executable spec — every example must parse, format canonically, and compile).
 
 ---
 
@@ -147,7 +147,7 @@ Cross-statement checks:
 - **Edge-triggered entry.** The entry fires on the bar where the combined condition transitions false→true, matching the scanner/codegen pattern (`entries = cond & ~cond.shift(1)`). A condition that stays true for 10 bars produces one entry, not ten.
 - **Warmup.** Indicator NaN periods evaluate to false. Never an exception, never a fill.
 - **One position per ticker.** While a position is open in a ticker, further entries in that ticker are ignored. Re-entry requires a new rising edge after the exit.
-- **Exit precedence within a bar:** `[stop]` → `[target]` → `[trailing]` → condition exits → `[after N bars]`. Deterministic and documented so backtests are reproducible.
+- **Exit precedence within a bar:** `[stop]` → `[breakeven]` → `[target]` → `[trailing]` → condition exits → `[after N bars]`. Deterministic and documented so backtests are reproducible.
 - **`crosses above/below`** requires both the current and previous bar to be non-NaN; the crossing bar itself satisfies the condition (consistent with `rsi_crosses_above` in the registry).
 - **`at`** is per-tag touch semantics, defined in `TAGS.md` (e.g. lower band: `close <= band`; middle band: within 0.5% of mid). `price == [tag]` is a parse-level error with the hint to use `at` — float equality never fires and the language refuses to let you write it.
 

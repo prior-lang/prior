@@ -34,6 +34,8 @@ _PREDICATE_MAP = {
     "gap_down": "gap_down",
     "up_days": "up_days",
     "down_days": "down_days",
+    "squeeze": "bollinger_squeeze",
+    "obv_rising": "obv_rising",
 }
 
 
@@ -88,14 +90,20 @@ class Program:
 
         exit_conditions = []
         stop = target = trailing = hold = None
+        stop_atr = target_atr = trailing_atr = breakeven = None
         for t in self.exit_terms:
             if isinstance(t, TagNode):
-                if t.name == "stop":
-                    stop = t.params["value"]
-                elif t.name == "target":
-                    target = t.params["value"]
-                elif t.name == "trailing":
-                    trailing = t.params["value"]
+                if t.name in ("stop", "target", "trailing"):
+                    is_atr = t.params.get("unit") == "atr"
+                    v = t.params["value"]
+                    if t.name == "stop":
+                        stop_atr, stop = (v, stop) if is_atr else (stop_atr, v)
+                    elif t.name == "target":
+                        target_atr, target = (v, target) if is_atr else (target_atr, v)
+                    else:
+                        trailing_atr, trailing = (v, trailing) if is_atr else (trailing_atr, v)
+                elif t.name == "breakeven":
+                    breakeven = t.params["trigger"]
                 elif t.name == "after":
                     hold = int(t.params["bars"])
             else:
@@ -138,6 +146,10 @@ class Program:
                 "stop_loss_pct": stop,
                 "profit_target_pct": target,
                 "trailing_stop_pct": trailing,
+                "stop_loss_atr": stop_atr,
+                "profit_target_atr": target_atr,
+                "trailing_stop_atr": trailing_atr,
+                "breakeven_trigger_pct": breakeven,
                 "hold_bars": hold,
             },
             "position_sizing": sizing,
@@ -187,6 +199,13 @@ def _desugar(term) -> dict:
             return {"condition": name, "params": {"min_gap_pct": float(p["gap"])}}
         if tag.name in ("up_days", "down_days"):
             return {"condition": name, "params": {"count": int(p["count"])}}
+        if tag.name == "squeeze":
+            return {"condition": name, "params": {
+                "lookback": int(p["lookback"]), "pct": float(p["pct"]),
+                "period": int(p["period"]), "num_std": float(p["std"]),
+            }}
+        if tag.name == "obv_rising":
+            return {"condition": name, "params": {"period": int(p["period"])}}
         # MACD crosses
         return {"condition": name, "params": {"fast": int(p["fast"]), "slow": int(p["slow"]), "signal": int(p["signal"])}}
 
@@ -207,10 +226,10 @@ def _desugar(term) -> dict:
                 "condition": "price_at_bollinger_band",
                 "params": {"period": int(p["period"]), "num_std": float(p["std"]), "band": _BOLLINGER[right.name]},
             }
-        if right.name in ("sma", "ema"):
+        if right.name in ("sma", "ema", "vwap"):
             if cmp not in ("above", "below"):
                 raise PriorError(
-                    f"price compares to a moving average with above/below, not '{_cmp_text(cmp)}'",
+                    f"price compares to a moving average or VWAP with above/below, not '{_cmp_text(cmp)}'",
                     line=term.line,
                     suggestion=f"price above [{right.name} {int(right.params['period'])}]",
                 )
@@ -455,6 +474,25 @@ def _parse_tag(cur: _Cursor) -> TagNode:
     if name == "heavy_volume" and pos_raw and pos_raw[0][0] == "percent":
         pos_raw.insert(0, ("word", "top"))
 
+    # breakeven convenience: allow [breakeven 2%] without the 'after'
+    if name == "breakeven" and pos_raw and pos_raw[0][0] == "percent":
+        pos_raw.insert(0, ("word", "after"))
+
+    # Priced exits take a percent or an ATR multiple: [stop 1.5%] / [stop 2 atr]
+    if name in ("stop", "target", "trailing"):
+        if named_raw:
+            cur.err(f"[{name}] takes no named parameters", tok=name_tok)
+        if len(pos_raw) == 1 and pos_raw[0][0] == "percent":
+            params = {"value": pos_raw[0][1], "unit": "pct"}
+        elif (len(pos_raw) == 2 and pos_raw[0][0] == "number"
+              and pos_raw[1] == ("word", "atr")):
+            params = {"value": pos_raw[0][1], "unit": "atr"}
+        else:
+            cur.err(f"[{name}] takes a percent or an ATR multiple", tok=name_tok,
+                    suggestion=f"e.g. [{name} 1.5%] or [{name} 2 atr]")
+        return TagNode(name, params, pos_raw=pos_raw, named_raw=named_raw,
+                       line=name_tok.line, col=name_tok.col)
+
     params = _resolve_params(cur, name_tok, spec, pos_raw, named_raw)
     return TagNode(name, params, pos_raw=pos_raw, named_raw=named_raw,
                    line=name_tok.line, col=name_tok.col)
@@ -498,6 +536,8 @@ def _resolve_params(cur: _Cursor, name_tok: Token, spec: TagSpec, pos_raw, named
         unit = params.get("unit", "bars")
         if unit not in ("bar", "bars"):
             cur.err(f"[after] counts bars: [after 5 bars], not '{unit}'", tok=name_tok)
+    if spec.name == "breakeven" and params.get("word") != "after":
+        cur.err("[breakeven] reads: [breakeven after 2%]", tok=name_tok)
     return params
 
 

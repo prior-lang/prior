@@ -312,6 +312,38 @@ def _hcode(condition: Dict[str, Any]) -> str:
             f"    {expr}"
         )
 
+    if ctype in ("price_above_vwap", "price_below_vwap"):
+        n = int(p.get("period", 20))
+        op = ">" if ctype == "price_above_vwap" else "<"
+        return (
+            f"tp = (df['high'] + df['low'] + close) / 3\n"
+            f"    pv = (tp * df['volume']).rolling({n}, min_periods={n}).sum()\n"
+            f"    v = df['volume'].rolling({n}, min_periods={n}).sum()\n"
+            f"    vwap = pv / v.replace(0, np.nan)\n"
+            f"    cond = (close {op} vwap).fillna(False)"
+        )
+    if ctype == "bollinger_squeeze":
+        n = int(p.get("period", 20))
+        num_std = float(p.get("num_std", 2.0))
+        lookback = int(p.get("lookback", 126))
+        pct = float(p.get("pct", 10.0))
+        q = pct / 100.0
+        return (
+            f"mid = close.rolling({n}, min_periods={n}).mean()\n"
+            f"    std = close.rolling({n}, min_periods={n}).std()\n"
+            f"    width = (2 * {num_std} * std) / mid.replace(0, np.nan)\n"
+            f"    thr = width.rolling({lookback}, min_periods={lookback}).quantile({q})\n"
+            f"    cond = (width <= thr).fillna(False)"
+        )
+    if ctype == "obv_rising":
+        n = int(p.get("period", 20))
+        return (
+            f"direction = np.sign(close.diff()).fillna(0)\n"
+            f"    obv = (direction * df['volume']).cumsum()\n"
+            f"    obv_avg = obv.rolling({n}, min_periods={n}).mean()\n"
+            f"    cond = (obv > obv_avg).fillna(False)"
+        )
+
     raise ValueError(f"Unknown condition type: {ctype}")
 
 
@@ -341,37 +373,50 @@ def generate_strategy_code(
     stop_loss_pct: float | None = None,
     profit_target_pct: float | None = None,
     trailing_stop_pct: float | None = None,
+    stop_loss_atr: float | None = None,
+    profit_target_atr: float | None = None,
+    trailing_stop_atr: float | None = None,
+    breakeven_trigger_pct: float | None = None,
     direction: str = "long",
     position_sizing: Dict[str, Any] | None = None,
     risk: Dict[str, Any] | None = None,
 ) -> str:
     """Build the strategy code string.
 
-    Args mirror the strategy JSON: entry conditions + match logic, exit
-    rules (priced, conditional, time), direction ("long" emits 0/1
-    signals, "short" emits 0/-1 with stop/target/trailing mirrored around
-    entry and the trailing watermark tracking the low), and sizing/risk
-    metadata embedded as module-level constants.
+    Exit rules: each of stop/target/trailing takes EITHER a percent or an
+    ATR multiple (both set is an error). Percent exits measure from the
+    entry close; ATR stops/targets freeze the 14-period ATR at entry, and
+    the ATR trailing stop is a chandelier (current ATR off the watermark).
+    breakeven_trigger_pct arms once price moves N% in the trade's favor,
+    after which a return to the entry price exits.
 
-    Exit precedence within a bar (see prior/spec SPEC.md section 6):
-    stop -> target -> trailing -> condition exits -> hold_bars. Bar-close
-    evaluation; entries fire on the rising edge of the combined condition.
-
-    When only hold_bars is used with direction="long" (the scanner's
-    promote path), the emitted code is byte-stable with pre-Phase-B
-    output so existing promoted strategies regenerate identically.
+    Exit precedence within a bar: stop -> breakeven -> target -> trailing
+    -> condition exits -> hold_bars. Bar-close evaluation; entries fire on
+    the rising edge. direction="short" emits 0/-1 signals with all exits
+    mirrored. Long-only, hold-only strategies emit the original vectorized
+    form, byte-stable with pre-Phase-B output.
     """
     if not conditions:
         raise ValueError("At least one condition is required")
     if direction not in ("long", "short"):
         raise ValueError(f"direction must be 'long' or 'short', got {direction!r}")
+    for pct_v, atr_v, label in (
+        (stop_loss_pct, stop_loss_atr, "stop"),
+        (profit_target_pct, profit_target_atr, "target"),
+        (trailing_stop_pct, trailing_stop_atr, "trailing"),
+    ):
+        if pct_v is not None and atr_v is not None:
+            raise ValueError(f"{label}: give a percent or an ATR multiple, not both")
 
     entry_body, entry_expr = _condition_blocks(conditions, match_logic, "cond")
     hold = int(max(1, hold_bars))
     is_short = direction == "short"
 
     has_priced_exits = any(
-        v is not None for v in (stop_loss_pct, profit_target_pct, trailing_stop_pct)
+        v is not None
+        for v in (stop_loss_pct, profit_target_pct, trailing_stop_pct,
+                  stop_loss_atr, profit_target_atr, trailing_stop_atr,
+                  breakeven_trigger_pct)
     )
     has_cond_exits = bool(exit_conditions)
 
@@ -416,14 +461,28 @@ def generate_strategy_code(
     stop = float(stop_loss_pct) if stop_loss_pct is not None else 0.0
     target = float(profit_target_pct) if profit_target_pct is not None else 0.0
     trail = float(trailing_stop_pct) if trailing_stop_pct is not None else 0.0
+    stop_a = float(stop_loss_atr) if stop_loss_atr is not None else 0.0
+    target_a = float(profit_target_atr) if profit_target_atr is not None else 0.0
+    trail_a = float(trailing_stop_atr) if trailing_stop_atr is not None else 0.0
+    be = float(breakeven_trigger_pct) if breakeven_trigger_pct is not None else 0.0
+
+    needs_atr = bool(stop_a or target_a or trail_a)
 
     exit_desc_parts = []
     if stop:
         exit_desc_parts.append(f"stop {stop}%")
+    if stop_a:
+        exit_desc_parts.append(f"stop {stop_a} ATR")
+    if be:
+        exit_desc_parts.append(f"breakeven at {be}%")
     if target:
         exit_desc_parts.append(f"target {target}%")
+    if target_a:
+        exit_desc_parts.append(f"target {target_a} ATR")
     if trail:
         exit_desc_parts.append(f"trailing {trail}%")
+    if trail_a:
+        exit_desc_parts.append(f"trailing {trail_a} ATR (chandelier)")
     if has_cond_exits:
         exit_desc_parts.append(f"{len(exit_conditions)} exit condition(s)")
     exit_desc_parts.append(f"max {hold} bars")
@@ -432,23 +491,81 @@ def generate_strategy_code(
     if is_short:
         sig_val = "-1"
         wm_cmp = "<"
-        stop_expr = f"px >= entry_px * (1 + {stop} / 100.0)"
-        target_expr = f"px <= entry_px * (1 - {target} / 100.0)"
-        trail_expr = f"px >= hwm * (1 + {trail} / 100.0)"
         enter_phrase = "Enters short on the rising edge"
+        stop_chk = f"px >= entry_px * (1 + {stop} / 100.0)"
+        target_chk = f"px <= entry_px * (1 - {target} / 100.0)"
+        trail_chk = f"px >= hwm * (1 + {trail} / 100.0)"
+        stop_a_chk = f"not np.isnan(entry_atr) and px >= entry_px + {stop_a} * entry_atr"
+        target_a_chk = f"not np.isnan(entry_atr) and px <= entry_px - {target_a} * entry_atr"
+        trail_a_chk = f"not np.isnan(atr_arr[i]) and px >= hwm + {trail_a} * atr_arr[i]"
+        be_arm_chk = f"px <= entry_px * (1 - {be} / 100.0)"
+        be_exit_chk = "px >= entry_px"
     else:
         sig_val = "1"
         wm_cmp = ">"
-        stop_expr = f"px <= entry_px * (1 - {stop} / 100.0)"
-        target_expr = f"px >= entry_px * (1 + {target} / 100.0)"
-        trail_expr = f"px <= hwm * (1 - {trail} / 100.0)"
         enter_phrase = "Enters on the rising edge"
+        stop_chk = f"px <= entry_px * (1 - {stop} / 100.0)"
+        target_chk = f"px >= entry_px * (1 + {target} / 100.0)"
+        trail_chk = f"px <= hwm * (1 - {trail} / 100.0)"
+        stop_a_chk = f"not np.isnan(entry_atr) and px <= entry_px - {stop_a} * entry_atr"
+        target_a_chk = f"not np.isnan(entry_atr) and px >= entry_px + {target_a} * entry_atr"
+        trail_a_chk = f"not np.isnan(atr_arr[i]) and px <= hwm - {trail_a} * atr_arr[i]"
+        be_arm_chk = f"px >= entry_px * (1 + {be} / 100.0)"
+        be_exit_chk = "px <= entry_px"
+
+    atr_block = ""
+    atr_init = ""
+    entry_atr_line = ""
+    if needs_atr:
+        atr_block = (
+            "\n    prev_close_x = close.shift(1)\n"
+            "    tr_x = pd.concat([(df['high'] - df['low']),\n"
+            "                    (df['high'] - prev_close_x).abs(),\n"
+            "                    (df['low'] - prev_close_x).abs()], axis=1).max(axis=1)\n"
+            "    atr_x = tr_x.rolling(14, min_periods=14).mean()\n"
+            "    atr_arr = atr_x.to_numpy()\n"
+        )
+        atr_init = "\n    entry_atr = float('nan')"
+        entry_atr_line = "\n                entry_atr = atr_arr[i]"
+
+    be_init = ""
+    be_reset_line = ""
+    be_arm_line = ""
+    if be:
+        be_init = "\n    be_armed = False"
+        be_reset_line = "\n                be_armed = False"
+        be_arm_line = f"\n        if not be_armed and {be_arm_chk}:\n            be_armed = True"
+
+    checks = []
+    if stop:
+        checks.append(stop_chk)
+    if stop_a:
+        checks.append(stop_a_chk)
+    if be:
+        checks.append(f"be_armed and {be_exit_chk}")
+    if target:
+        checks.append(target_chk)
+    if target_a:
+        checks.append(target_a_chk)
+    if trail:
+        checks.append(trail_chk)
+    if trail_a:
+        checks.append(trail_a_chk)
+    checks.append("exit_arr[i]")
+    checks.append(f"bars_held >= {hold}")
+
+    chain_lines = []
+    for idx, chk in enumerate(checks):
+        kw = "if" if idx == 0 else "elif"
+        chain_lines.append(f"        {kw} {chk}:")
+        chain_lines.append("            exit_now = True")
+    exit_chain = "\n".join(chain_lines)
 
     return f'''{metadata}def generate_signals(df):
     """Auto-generated strategy. Mirrors {len(conditions)} entry
     condition(s) combined with {match_logic.upper()}. {enter_phrase};
     exits on first of: {exit_desc}. Bar-close evaluation; exit precedence
-    stop -> target -> trailing -> conditions -> time."""
+    stop -> breakeven -> target -> trailing -> conditions -> time."""
     close = df["close"]
 
 {entry_body}
@@ -456,7 +573,7 @@ def generate_strategy_code(
     combined = ({entry_expr}).fillna(False)
     entries = combined & ~combined.shift(1).fillna(False)
 {exit_body}
-{exit_series}
+{exit_series}{atr_block}
     entries_arr = entries.to_numpy()
     exit_arr = exit_cond.to_numpy()
     close_arr = close.to_numpy()
@@ -465,31 +582,22 @@ def generate_strategy_code(
     in_pos = False
     entry_px = 0.0
     hwm = 0.0
-    bars_held = 0
+    bars_held = 0{atr_init}{be_init}
     for i in range(n):
         if not in_pos:
             if entries_arr[i]:
                 in_pos = True
                 entry_px = close_arr[i]
                 hwm = close_arr[i]
-                bars_held = 0
+                bars_held = 0{entry_atr_line}{be_reset_line}
                 sig[i] = {sig_val}
             continue
         bars_held += 1
         px = close_arr[i]
         if px {wm_cmp} hwm:
-            hwm = px
+            hwm = px{be_arm_line}
         exit_now = False
-        if {stop} > 0 and {stop_expr}:
-            exit_now = True
-        elif {target} > 0 and {target_expr}:
-            exit_now = True
-        elif {trail} > 0 and {trail_expr}:
-            exit_now = True
-        elif exit_arr[i]:
-            exit_now = True
-        elif bars_held >= {hold}:
-            exit_now = True
+{exit_chain}
         if exit_now:
             in_pos = False
             sig[i] = 0
@@ -514,6 +622,10 @@ def compile_strategy(strategy: Dict[str, Any]) -> str:
         stop_loss_pct=exit_rule.get("stop_loss_pct"),
         profit_target_pct=exit_rule.get("profit_target_pct"),
         trailing_stop_pct=exit_rule.get("trailing_stop_pct"),
+        stop_loss_atr=exit_rule.get("stop_loss_atr"),
+        profit_target_atr=exit_rule.get("profit_target_atr"),
+        trailing_stop_atr=exit_rule.get("trailing_stop_atr"),
+        breakeven_trigger_pct=exit_rule.get("breakeven_trigger_pct"),
         position_sizing=strategy.get("position_sizing"),
         risk=strategy.get("risk"),
     )

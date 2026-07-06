@@ -160,6 +160,20 @@ _register(TagSpec(
     positional=[_p("count", NUMBER, required=True)],
 ))
 _register(TagSpec(
+    name="vwap", kind="condition", usage="operand",
+    positional=[_p("period", NUMBER, 20)],
+    named={"period": _p("period", NUMBER, 20)},
+))
+_register(TagSpec(
+    name="squeeze", kind="condition", usage="predicate",
+    positional=[_p("lookback", NUMBER, 126)],
+    named={"pct": _p("pct", NUMBER, 10.0), "period": _p("period", NUMBER, 20), "std": _p("std", NUMBER, 2.0)},
+))
+_register(TagSpec(
+    name="obv_rising", kind="condition", usage="predicate",
+    positional=[_p("period", NUMBER, 20)],
+))
+_register(TagSpec(
     name="adx", kind="condition", usage="operand",
     positional=[_p("period", NUMBER, 14)],
     named={"period": _p("period", NUMBER, 14)},
@@ -188,6 +202,10 @@ for name in ("stop", "target", "trailing"):
 _register(TagSpec(
     name="after", kind="exit", usage="n/a",
     positional=[_p("bars", NUMBER, required=True), _p("unit", WORD, "bars")],
+))
+_register(TagSpec(
+    name="breakeven", kind="exit", usage="n/a",
+    positional=[_p("word", WORD, "after"), _p("trigger", PERCENT, required=True)],
 ))
 
 # ── Risk tags ──────────────────────────────────────────────────────

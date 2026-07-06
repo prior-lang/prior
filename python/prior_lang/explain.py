@@ -91,6 +91,16 @@ def _condition_text(cond: dict) -> str:
     if name in ("stoch_less_than", "stoch_greater_than"):
         side = "below" if "less" in name else "above"
         return f"stochastic %K({_num(p.get('period', 14))}) is {side} {_num(p.get('threshold'))}"
+    if name in ("price_above_vwap", "price_below_vwap"):
+        side = "above" if "above" in name else "below"
+        return f"price is {side} the {_num(p.get('period', 20))}-bar VWAP"
+    if name == "bollinger_squeeze":
+        return (
+            f"Bollinger band width is in its lowest {_num(p.get('pct', 10))}% "
+            f"of the last {_plural(p.get('lookback', 126), 'bar')}"
+        )
+    if name == "obv_rising":
+        return f"on-balance volume is above its {_num(p.get('period', 20))}-bar average"
     if name in ("stoch_crosses_above", "stoch_crosses_below"):
         d = "above" if name.endswith("above") else "below"
         return f"stochastic %K({_num(p.get('period', 14))}) crosses {d} {_num(p.get('threshold'))}"
@@ -146,6 +156,18 @@ def explain_strategy(strategy: dict) -> str:
     if ex.get("trailing_stop_pct") is not None:
         mark = "low" if is_short else "high"
         exits.append(f"a trailing stop {_num(ex['trailing_stop_pct'])}% off the {mark}")
+    if ex.get("stop_loss_atr") is not None:
+        side = "above" if is_short else "below"
+        exits.append(f"a stop {_num(ex['stop_loss_atr'])} ATR {side} entry")
+    if ex.get("profit_target_atr") is not None:
+        side = "below" if is_short else "above"
+        exits.append(f"a target {_num(ex['profit_target_atr'])} ATR {side} entry")
+    if ex.get("trailing_stop_atr") is not None:
+        mark = "low" if is_short else "high"
+        exits.append(f"a chandelier stop {_num(ex['trailing_stop_atr'])} ATR off the {mark}")
+    if ex.get("breakeven_trigger_pct") is not None:
+        d = "in the trade's favor" if is_short else "up"
+        exits.append(f"a breakeven stop armed once {_num(ex['breakeven_trigger_pct'])}% {d}")
     for c in ex.get("conditions") or []:
         exits.append(_condition_text(c))
     if ex.get("hold_bars") is not None:
