@@ -108,6 +108,59 @@ def test_backtest_multi_ticker_universe(tmp_path, capsys):
     assert "independent per-ticker runs" in out
 
 
+def test_backtest_accepts_json_and_jsonl_data(tmp_path, capsys):
+    pd = pytest.importorskip("pandas")
+    import numpy as np
+
+    rng = np.random.default_rng(5)
+    closes = 100 + np.cumsum(rng.normal(0, 1.0, 150))
+    df = pd.DataFrame({
+        "date": pd.date_range("2025-01-01", periods=150, freq="B").strftime("%Y-%m-%d"),
+        "close": closes, "volume": 1_000_000,
+    })
+    as_json = tmp_path / "bars.json"
+    as_jsonl = tmp_path / "bars.jsonl"
+    df.to_json(as_json, orient="records")
+    df.to_json(as_jsonl, orient="records", lines=True)
+
+    strat = tmp_path / "s.prior"
+    strat.write_text(
+        "universe $SPY\nwhen [macd_cross_up]\n  buy [10% portfolio]\nsell when [macd_cross_down]\n"
+    )
+    for data in (as_json, as_jsonl):
+        assert main(["backtest", str(strat), "--data", str(data)]) == 0
+        assert "Total return" in capsys.readouterr().out
+
+
+def test_strategy_json_input_all_verbs(tmp_path, capsys):
+    """The interchange .json is a first-class strategy input; fmt converts it to .prior."""
+    # Produce JSON from the bollinger example, then feed it back
+    out_json = tmp_path / "strategy.json"
+    assert main(["compile", BOLLINGER, "--json", "--out", str(out_json)]) == 0
+    capsys.readouterr()
+
+    assert main(["validate", str(out_json)]) == 0
+    assert "ok" in capsys.readouterr().out
+
+    assert main(["fmt", str(out_json)]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith('strategy "Bollinger Reversal"')  # JSON → .prior text
+
+    assert main(["compile", str(out_json)]) == 0
+    assert "def generate_signals" in capsys.readouterr().out
+
+
+def test_sample_dataset_runs_example_universe(capsys):
+    pytest.importorskip("pandas")
+    sample = EXAMPLES / "data" / "sample_universe.csv"
+    assert sample.exists()
+    strat = str(EXAMPLES / "mega_tech_capitulation.prior")
+    assert main(["backtest", strat, "--data", str(sample)]) == 0
+    out = capsys.readouterr().out
+    assert "15 tickers" in out  # full mega_tech universe present
+    assert "average" in out
+
+
 def test_backtest_cloud_stub(capsys):
     assert main(["backtest", BOLLINGER, "--cloud"]) == 0
     assert "coming soon" in capsys.readouterr().out.lower()

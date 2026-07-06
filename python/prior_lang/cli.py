@@ -16,10 +16,12 @@ import json
 import sys
 from pathlib import Path
 
-from . import __version__, format_source, parse_source
+from . import __version__, parse_source
 from .codegen import compile_strategy
+from .decompile import strategy_to_source
 from .errors import PriorError
 from .explain import explain_strategy
+from .formatter import format_program
 
 
 def _read(path: str) -> str:
@@ -29,14 +31,31 @@ def _read(path: str) -> str:
     return p.read_text()
 
 
+def _load_program(path: str):
+    """Load a strategy from .prior source or interchange .json.
+
+    JSON goes through the decompiler first, so both formats flow through
+    the same parser and validation — a .json strategy that compiles is
+    guaranteed expressible as .prior text, and vice versa.
+    """
+    src = _read(path)
+    if path.endswith(".json"):
+        try:
+            src = strategy_to_source(json.loads(src))
+        except json.JSONDecodeError as e:
+            raise SystemExit(f"{path}: not valid JSON ({e})")
+    return parse_source(src, filename=path)
+
+
 def _cmd_validate(args) -> int:
-    parse_source(_read(args.file), filename=args.file)
+    _load_program(args.file)
     print(f"ok — {args.file} is a valid PRIOR strategy")
     return 0
 
 
 def _cmd_fmt(args) -> int:
-    canonical = format_source(_read(args.file), filename=args.file)
+    # For .json input this converts: interchange JSON in, .prior text out.
+    canonical = format_program(_load_program(args.file))
     if args.write:
         Path(args.file).write_text(canonical)
         print(f"formatted {args.file}")
@@ -46,7 +65,7 @@ def _cmd_fmt(args) -> int:
 
 
 def _cmd_compile(args) -> int:
-    strategy = parse_source(_read(args.file), filename=args.file).to_json()
+    strategy = _load_program(args.file).to_json()
     output = (
         json.dumps(strategy, indent=2) + "\n" if args.json else compile_strategy(strategy)
     )
@@ -59,7 +78,7 @@ def _cmd_compile(args) -> int:
 
 
 def _cmd_explain(args) -> int:
-    strategy = parse_source(_read(args.file), filename=args.file).to_json()
+    strategy = _load_program(args.file).to_json()
     print("── What it does ──────────────────────────────────────────")
     print(explain_strategy(strategy))
     print()
@@ -84,7 +103,7 @@ def _cmd_backtest(args) -> int:
         )
     from .backtest import load_bars, run_backtest, run_universe_backtest  # lazy: needs pandas
 
-    strategy = parse_source(_read(args.file), filename=args.file).to_json()
+    strategy = _load_program(args.file).to_json()
     df = load_bars(args.data)
     name = strategy.get("name") or Path(args.file).stem
 
@@ -168,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("backtest", help="run the strategy over a bars file and print metrics")
     p.add_argument("file")
-    p.add_argument("--data", help="CSV or Parquet with date,open,high,low,close,volume; add a ticker column to run a whole universe from one file")
+    p.add_argument("--data", help="bars as CSV, Parquet, JSON, or JSONL (date,open,high,low,close,volume); add a ticker column to run a whole universe from one file")
     p.add_argument("--cloud", action="store_true", help="run against hosted full-history data (coming soon)")
     p.set_defaults(fn=_cmd_backtest)
 

@@ -41,7 +41,16 @@ prior fmt strategy.prior               canonical formatting (--write rewrites in
 prior compile strategy.prior           emit runnable Python (--json for the interchange format)
 prior explain strategy.prior           every layer: English readback, JSON, generated Python
 prior backtest strategy.prior --data bars.csv    metrics over your own OHLCV data
-                                                 (add a ticker column to run a whole universe from one file)
+                                                 (CSV, Parquet, JSON, or JSONL; add a ticker
+                                                 column to run a whole universe from one file)
+```
+
+Strategies are accepted as `.prior` text or as the interchange `.json` — every verb takes either, and `prior fmt strategy.json` converts JSON back into readable PRIOR text.
+
+Try it immediately with the bundled (synthetic) sample universe:
+
+```
+prior backtest examples/mega_tech_capitulation.prior --data examples/data/sample_universe.csv
 ```
 
 Install: `pip install prior-lang` (add `[backtest]` for the backtester's pandas dependency).

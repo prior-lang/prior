@@ -27,7 +27,8 @@ def _require_pandas():
 
 
 def load_bars(path: str):
-    """Load OHLCV bars from CSV or Parquet. Column names are matched
+    """Load OHLCV bars from CSV, Parquet, JSON (array of bar records), or
+    JSONL (one bar object per line). Column names are matched
     case-insensitively; a date/time column becomes the index if present.
 
     A `ticker` (or `symbol`) column marks a multi-instrument file — one
@@ -36,6 +37,10 @@ def load_bars(path: str):
     pd, _np = _require_pandas()
     if path.endswith((".parquet", ".pq")):
         df = pd.read_parquet(path)
+    elif path.endswith(".jsonl"):
+        df = pd.read_json(path, lines=True)
+    elif path.endswith(".json"):
+        df = pd.read_json(path, orient="records")
     else:
         df = pd.read_csv(path)
     df.columns = [str(c).strip().lower() for c in df.columns]
