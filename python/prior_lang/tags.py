@@ -40,7 +40,7 @@ def _p(name, kind, default=None, required=False):
     return Param(name=name, kind=kind, default=default, required=required)
 
 
-UNIVERSE_KEYS = ["sp_top_30", "mega_tech", "etf_sectors", "big_banks", "semis"]
+UNIVERSE_KEYS = ["sp_top_30", "mega_tech", "etf_sectors", "big_banks", "semis", "crypto_majors"]
 
 
 TAGS: dict[str, TagSpec] = {}

@@ -128,6 +128,22 @@ def test_namespaced_tags_reserved():
     assert "future version" in e.message
 
 
+def test_crypto_majors_universe_and_crypto_ticker():
+    src = (
+        "universe [crypto_majors]\n"
+        "when price at [lower_bollinger]\n"
+        "  buy [5% portfolio]\n"
+        "sell when [after 10 bars]\n"
+    )
+    s = prior_lang.compile_source(src)
+    assert s["universe"] == {"type": "prebuilt", "key": "crypto_majors"}
+    # Inline crypto ticker scoping also works (hyphenated pairs lex as tickers)
+    s2 = prior_lang.compile_source(
+        "when $BTC-USD at [lower_bollinger]\n  buy [5% portfolio]\nsell when [after 10 bars]\n"
+    )
+    assert s2["universe"] == {"type": "manual", "tickers": ["BTC-USD"]}
+
+
 def test_case_insensitive_keywords_and_tags():
     src = 'UNIVERSE [SP_TOP_30]\nWHEN [MACD_CROSS_UP]\n  BUY [10% PORTFOLIO]\nSELL WHEN [MACD_CROSS_DOWN]'
     s = prior_lang.compile_source(src)

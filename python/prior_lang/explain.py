@@ -15,6 +15,7 @@ _UNIVERSE_LABELS = {
     "etf_sectors": "the SPDR sector ETFs",
     "big_banks": "the big banks",
     "semis": "the semiconductor leaders",
+    "crypto_majors": "the major crypto pairs",
 }
 
 

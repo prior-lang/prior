@@ -154,6 +154,7 @@ Shared 1:1 with the AutoQuant engine's prebuilt universes (`engine/loop/universe
 | `[etf_sectors]` | 11 SPDR sector ETFs: XLK XLF XLE XLV XLI XLY XLP XLB XLRE XLU XLC |
 | `[big_banks]` | 10 money-center + super-regional banks: JPM BAC WFC C GS MS USB PNC TFC SCHW |
 | `[semis]` | 14 semiconductor leaders: NVDA AVGO AMD QCOM TXN INTC MU AMAT LRCX KLAC MRVL ADI NXPI MCHP |
+| `[crypto_majors]` | 8 deepest-liquidity crypto pairs: BTC-USD ETH-USD SOL-USD DOGE-USD AVAX-USD LINK-USD LTC-USD BCH-USD |
 
 Manual universes skip the tag: `universe $AAPL $MSFT $NVDA` or, for one ticker, inline scoping (`when $NVDA at [lower_bollinger]`).
 
