@@ -1,0 +1,12 @@
+# Volatility compression precedes expansion. When BTC's daily range has
+# contracted hard and price pushes through the upper band anyway, that is
+# the squeeze firing — ride the expansion with a trailing stop instead of
+# capping it with a fixed target.
+
+strategy "BTC Squeeze Breakout"
+
+when $BTC-USD at [upper_bollinger] and [quiet 2.5%]
+  buy [$5000]
+
+sell when [trailing 4%]
+  or [after 20 bars]

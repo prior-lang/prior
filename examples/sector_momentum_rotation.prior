@@ -1,0 +1,17 @@
+# Momentum with a trend filter: a MACD turn only counts when the sector
+# is already above its 100-day base — fresh momentum in an established
+# uptrend, not a countertrend twitch. A few sectors lead every regime;
+# the risk block keeps one regime's leaders from crowding the whole book.
+
+strategy "Sector Momentum Rotation"
+
+universe [etf_sectors]
+timeframe 1d
+
+when [macd_cross_up] and price above [sma 100]
+  buy [12% portfolio]
+
+sell when [macd_cross_down]
+  or [trailing 6%]
+
+risk [max_positions 3] [daily_loss $400]

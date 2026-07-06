@@ -1,0 +1,16 @@
+# Three different fingerprints of the same event — a washout low: deep
+# RSI, a wide-band touch, panic volume. ANY of them arms the bounce;
+# demanding all three at once would miss most capitulations. Risk-based
+# sizing keeps every entry worth exactly 1% of equity at the stop, no
+# matter how far away the stop sits.
+
+strategy "Mega Tech Capitulation Bounce"
+
+universe [mega_tech]
+
+when [rsi] < 25 or price at [lower_bollinger std=2.5] or [volume_spike 3x]
+  buy [risk 1%]
+
+sell when [rsi] crosses above 50
+  or [stop 4%]
+  or [after 15 bars]

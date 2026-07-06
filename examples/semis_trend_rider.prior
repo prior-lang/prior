@@ -1,0 +1,17 @@
+# The classic trend regime, on the sector that trends hardest: enter the
+# golden cross, exit the death cross. The [after] backstop caps dead money
+# if the averages go sideways for a year — a cross that never resolves is
+# its own signal.
+
+strategy "Semis Trend Rider"
+
+universe [semis]
+timeframe 1d
+
+when [sma 50] crosses above [sma 200]
+  buy [10% portfolio]
+
+sell when [sma 50] crosses below [sma 200]
+  or [after 250 bars]
+
+risk [max_positions 4] [max_position 15%]

@@ -1,0 +1,16 @@
+# Crypto never closes, so hourly mean reversion gets the full 24-hour
+# cycle to work with. RSI crossing back UP through 30 is a stronger entry
+# than merely sitting below it: the knife has already bounced. Half a
+# percent of equity at risk per attempt — reversion strategies live on
+# many small tries, not one big conviction.
+
+strategy "ETH Oversold Recovery"
+
+timeframe 1h
+
+when $ETH-USD at [lower_bollinger] and [rsi 7] crosses above 30
+  buy [risk 0.5%]
+
+sell when price at [middle_bollinger]
+  or [rsi 7] > 70
+  or [stop 2.5%]
