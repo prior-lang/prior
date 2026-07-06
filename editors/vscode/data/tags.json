@@ -1,0 +1,1121 @@
+{
+  "tags": [
+    {
+      "name": "adx",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": false,
+      "description": "Average Directional Index, 0\u2013100 \u2014 trend strength regardless of direction. Above ~25 is trending.",
+      "example": "when [adx] > 25",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 14,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "after",
+      "kind": "exit",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Time exit: close after N bars, no questions asked.",
+      "example": "sell when [after 10 bars]",
+      "params": [
+        {
+          "name": "bars",
+          "kind": "number",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "unit",
+          "kind": "word",
+          "default": "bars",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "big_banks",
+      "kind": "universe",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Prebuilt list: 10 money-center and super-regional banks.",
+      "example": "universe [big_banks]",
+      "params": []
+    },
+    {
+      "name": "breakeven",
+      "kind": "exit",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Once up `trigger`, the stop moves to the entry price \u2014 the trade can no longer lose.",
+      "example": "sell when [breakeven after 2%] or [stop 3%]",
+      "params": [
+        {
+          "name": "word",
+          "kind": "word",
+          "default": "after",
+          "required": false
+        },
+        {
+          "name": "trigger",
+          "kind": "percent",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "collateral",
+      "kind": "risk",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Options cash-secured-put collateral cap as % of portfolio.",
+      "example": "risk [collateral 30%]",
+      "params": [
+        {
+          "name": "value",
+          "kind": "percent",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "contracts",
+      "kind": "risk",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Options position size: number of contracts per trade.",
+      "example": "risk [contracts 2]",
+      "params": [
+        {
+          "name": "count",
+          "kind": "number",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "cooldown",
+      "kind": "risk",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "After an exit, ignore new entry signals for N bars.",
+      "example": "risk [cooldown 5]",
+      "params": [
+        {
+          "name": "bars",
+          "kind": "number",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "covered_call",
+      "kind": "option",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Covered call against held shares at ~`delta`, ~`dte` days out.",
+      "example": "write [covered_call delta=25 dte=45]",
+      "params": [
+        {
+          "name": "delta",
+          "kind": "number",
+          "default": 25,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "dte",
+          "kind": "number",
+          "default": 45,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
+      "name": "crypto_majors",
+      "kind": "universe",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Prebuilt list: 8 deepest-liquidity crypto pairs (BTC-USD, ETH-USD, \u2026).",
+      "example": "universe [crypto_majors]",
+      "params": []
+    },
+    {
+      "name": "csp",
+      "kind": "option",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Cash-secured put at ~`delta`, ~`dte` days out.",
+      "example": "write [csp delta=20 dte=30]",
+      "params": [
+        {
+          "name": "delta",
+          "kind": "number",
+          "default": 25,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "dte",
+          "kind": "number",
+          "default": 45,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
+      "name": "daily_loss",
+      "kind": "risk",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Halt new entries after losing this many dollars in a day.",
+      "example": "risk [daily_loss $500]",
+      "params": [
+        {
+          "name": "value",
+          "kind": "dollar",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "dollar_volume",
+      "kind": "metric",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Average close \u00d7 volume \u2014 a liquidity rank.",
+      "example": "hold top 10 by [dollar_volume]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 20,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "down_days",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "The last N bars all closed lower than the bar before.",
+      "example": "when [down_days 5]",
+      "params": [
+        {
+          "name": "count",
+          "kind": "number",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "dte",
+      "kind": "management",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Options management: act when this many days to expiry remain.",
+      "example": "roll at [dte 21]",
+      "params": [
+        {
+          "name": "days",
+          "kind": "number",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "earnings_within",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": true,
+      "description": "An earnings report falls within N days (cloud calendar data).",
+      "example": "when [earnings_within 7 days]",
+      "params": [
+        {
+          "name": "days",
+          "kind": "number",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "unit",
+          "kind": "word",
+          "default": "days",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "ema",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": false,
+      "description": "Exponential moving average of closes. In crosses, the faster average goes on the left.",
+      "example": "when [ema 50] crosses above [ema 200]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "etf_sectors",
+      "kind": "universe",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Prebuilt list: the 11 SPDR sector ETFs.",
+      "example": "universe [etf_sectors]",
+      "params": []
+    },
+    {
+      "name": "gap_down",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Today opened at least `gap` below yesterday's close.",
+      "example": "when [gap_down 3%]",
+      "params": [
+        {
+          "name": "gap",
+          "kind": "percent",
+          "default": 2.0,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "gap_up",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Today opened at least `gap` above yesterday's close.",
+      "example": "when [gap_up 3%]",
+      "params": [
+        {
+          "name": "gap",
+          "kind": "percent",
+          "default": 2.0,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "heavy_volume",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Volume in the top N% of the lookback window \u2014 quieter cousin of a spike.",
+      "example": "when [heavy_volume top 10%]",
+      "params": [
+        {
+          "name": "top",
+          "kind": "word",
+          "default": "top",
+          "required": false
+        },
+        {
+          "name": "top_pct",
+          "kind": "percent",
+          "default": 10.0,
+          "required": false
+        },
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 60,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
+      "name": "inverse_volatility",
+      "kind": "metric",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "1/volatility \u2014 as a `weighted by` metric it risk-balances the book.",
+      "example": "weighted by [inverse_volatility]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 20,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "ivrank",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": true,
+      "description": "Implied-volatility rank over the lookback (cloud data). Parses and explains everywhere; evaluation needs hosted chain history.",
+      "example": "when [ivrank] > 50",
+      "params": [
+        {
+          "name": "lookback",
+          "kind": "number",
+          "default": 252,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
+      "name": "loss",
+      "kind": "management",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Options management: close at this % loss of credit received.",
+      "example": "close at [loss 200%]",
+      "params": [
+        {
+          "name": "value",
+          "kind": "percent",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "lower_bollinger",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": false,
+      "description": "The lower Bollinger band \u2014 touch it with `at` for mean-reversion entries. NaN warmup handled; `at` fires once on the touch, not every bar below.",
+      "example": "when price at [lower_bollinger 20 2.5]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 20,
+          "required": false
+        },
+        {
+          "name": "std",
+          "kind": "number",
+          "default": 2.0,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "macd_cross_down",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "MACD line crosses below its signal line.",
+      "example": "sell when [macd_cross_down]",
+      "params": [
+        {
+          "name": "fast",
+          "kind": "number",
+          "default": 12,
+          "required": false
+        },
+        {
+          "name": "slow",
+          "kind": "number",
+          "default": 26,
+          "required": false
+        },
+        {
+          "name": "signal",
+          "kind": "number",
+          "default": 9,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "macd_cross_up",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "MACD line crosses above its signal line \u2014 the classic momentum go signal.",
+      "example": "when [macd_cross_up]",
+      "params": [
+        {
+          "name": "fast",
+          "kind": "number",
+          "default": 12,
+          "required": false
+        },
+        {
+          "name": "slow",
+          "kind": "number",
+          "default": 26,
+          "required": false
+        },
+        {
+          "name": "signal",
+          "kind": "number",
+          "default": 9,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "max_position",
+      "kind": "risk",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Cap any single position at this % of the portfolio.",
+      "example": "risk [max_position 20%]",
+      "params": [
+        {
+          "name": "value",
+          "kind": "percent",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "max_positions",
+      "kind": "risk",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Cap on simultaneous open positions across the universe.",
+      "example": "risk [max_positions 3]",
+      "params": [
+        {
+          "name": "value",
+          "kind": "number",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "mega_tech",
+      "kind": "universe",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Prebuilt list: 15 mega-cap tech names.",
+      "example": "universe [mega_tech]",
+      "params": []
+    },
+    {
+      "name": "middle_bollinger",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": false,
+      "description": "The middle Bollinger band (the moving average of the band pair) \u2014 the classic mean-reversion exit target.",
+      "example": "sell when price at [middle_bollinger]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 20,
+          "required": false
+        },
+        {
+          "name": "std",
+          "kind": "number",
+          "default": 2.0,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "momentum",
+      "kind": "metric",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "N-bar total return; `skip` recent bars to dodge short-term reversal (12-1 momentum = [momentum 252 skip=21]).",
+      "example": "hold top 5 by [momentum 126]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "skip",
+          "kind": "number",
+          "default": 0,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
+      "name": "new_high",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Close is the highest of the lookback (default 252 bars \u2014 a 52-week high on dailies).",
+      "example": "when [new_high]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 252,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "new_low",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Close is the lowest of the lookback.",
+      "example": "when [new_low 63]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 252,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "no_earnings_within",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": true,
+      "description": "No earnings report within N days \u2014 skip the binary-event lottery (cloud calendar data).",
+      "example": "when [no_earnings_within 14 days]",
+      "params": [
+        {
+          "name": "days",
+          "kind": "number",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "unit",
+          "kind": "word",
+          "default": "days",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "obv_rising",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "On-balance volume above its own moving average \u2014 accumulation confirmation. Needs volume.",
+      "example": "when [obv_rising]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 20,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "profit",
+      "kind": "management",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Options management: close at this % of max profit.",
+      "example": "close at [profit 50%]",
+      "params": [
+        {
+          "name": "value",
+          "kind": "percent",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "quiet",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Rolling volatility (ATR%) is below the threshold \u2014 regime filter for calm tape.",
+      "example": "when [quiet 1.5%]",
+      "params": [
+        {
+          "name": "threshold",
+          "kind": "percent",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 14,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
+      "name": "relative_strength",
+      "kind": "metric",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "N-bar return minus the equal-weight universe's N-bar return.",
+      "example": "hold top 3 by [relative_strength 63]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 63,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "reverse",
+      "kind": "risk",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Stop-and-reverse: an opposite-direction entry signal flips the position instead of standing aside. Needs both long and short rules.",
+      "example": "risk [reverse]",
+      "params": []
+    },
+    {
+      "name": "risk",
+      "kind": "sizing",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Risk-based sizing: size the position so the stop distance costs this % of the portfolio. Requires a stop in the exit.",
+      "example": "buy [risk 1%]",
+      "params": [
+        {
+          "name": "value",
+          "kind": "percent",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "rsi",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": false,
+      "description": "Wilder's RSI, 0\u2013100. Compare with `<` `>` or `crosses above/below` a threshold.",
+      "example": "when [rsi 2] < 10",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 14,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "semis",
+      "kind": "universe",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Prebuilt list: 14 semiconductor leaders.",
+      "example": "universe [semis]",
+      "params": []
+    },
+    {
+      "name": "short_interest",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": true,
+      "description": "Short interest as % of float (cloud data). Evaluation needs hosted data.",
+      "example": "when [short_interest] > 20",
+      "params": []
+    },
+    {
+      "name": "sma",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": false,
+      "description": "Simple moving average of closes. Compare price or a faster average against it.",
+      "example": "when price above [sma 200]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "sp_top_30",
+      "kind": "universe",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Prebuilt list: the 30 largest S&P names by market cap.",
+      "example": "universe [sp_top_30]",
+      "params": []
+    },
+    {
+      "name": "squeeze",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Bollinger bandwidth in the tightest `pct`% of the lookback \u2014 coiled-spring compression before expansion.",
+      "example": "when [squeeze]",
+      "params": [
+        {
+          "name": "lookback",
+          "kind": "number",
+          "default": 126,
+          "required": false
+        },
+        {
+          "name": "pct",
+          "kind": "number",
+          "default": 10.0,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 20,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "std",
+          "kind": "number",
+          "default": 2.0,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
+      "name": "stoch",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": false,
+      "description": "Stochastic %K (smoothed), 0\u2013100. Compare or cross a threshold for overbought/oversold timing.",
+      "example": "when [stoch] crosses above 20",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 14,
+          "required": false
+        },
+        {
+          "name": "smooth",
+          "kind": "number",
+          "default": 3,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
+      "name": "stop",
+      "kind": "exit",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Stop loss: exit when the position moves against you by a percent or an ATR multiple.",
+      "example": "sell when [stop 2%]  \u00b7  [stop 2 atr]",
+      "params": [
+        {
+          "name": "value",
+          "kind": "percent",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "target",
+      "kind": "exit",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Profit target: exit on a favorable move of a percent or an ATR multiple.",
+      "example": "sell when [target 5%]",
+      "params": [
+        {
+          "name": "value",
+          "kind": "percent",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "top_volume",
+      "kind": "universe",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Dynamic universe: the N highest trailing-dollar-volume tickers in your data, membership recomputed monthly on closed bars only (no mid-month repaint).",
+      "example": "universe [top_volume 50]",
+      "params": [
+        {
+          "name": "count",
+          "kind": "number",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 20,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
+      "name": "trailing",
+      "kind": "exit",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Trailing stop from the high-water mark, percent or ATR multiple.",
+      "example": "sell when [trailing 3%]",
+      "params": [
+        {
+          "name": "value",
+          "kind": "percent",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "up_days",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "The last N bars all closed higher than the bar before.",
+      "example": "when [up_days 3]",
+      "params": [
+        {
+          "name": "count",
+          "kind": "number",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "upper_bollinger",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": false,
+      "description": "The upper Bollinger band \u2014 touch it with `at` to fade strength or confirm breakouts.",
+      "example": "when price at [upper_bollinger 20]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 20,
+          "required": false
+        },
+        {
+          "name": "std",
+          "kind": "number",
+          "default": 2.0,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "volatile",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Rolling volatility (ATR%) is above the threshold \u2014 regime filter for hot tape.",
+      "example": "when [volatile 3%]",
+      "params": [
+        {
+          "name": "threshold",
+          "kind": "percent",
+          "default": null,
+          "required": true
+        },
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 14,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
+      "name": "volatility",
+      "kind": "metric",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Annualized close-to-close volatility \u2014 rank `bottom` for low-vol portfolios.",
+      "example": "hold bottom 5 by [volatility 60]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 20,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "volume_spike",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "This bar's volume is at least `multiplier`\u00d7 its rolling average.",
+      "example": "when [volume_spike 2x]",
+      "params": [
+        {
+          "name": "multiplier",
+          "kind": "mult",
+          "default": 1.5,
+          "required": false
+        },
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 20,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
+      "name": "vwap",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": false,
+      "description": "Rolling volume-weighted average price. Needs volume \u2014 unavailable on spreads.",
+      "example": "when price above [vwap 20]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 20,
+          "required": false
+        }
+      ]
+    }
+  ],
+  "universes": {
+    "sp_top_30": [
+      "AAPL",
+      "MSFT",
+      "NVDA",
+      "GOOGL",
+      "AMZN",
+      "META",
+      "TSLA",
+      "ORCL",
+      "LLY",
+      "AVGO",
+      "JPM",
+      "V",
+      "UNH",
+      "XOM",
+      "MA",
+      "JNJ",
+      "PG",
+      "HD",
+      "COST",
+      "ABBV",
+      "MRK",
+      "WMT",
+      "NFLX",
+      "CRM",
+      "ADBE",
+      "KO",
+      "PEP",
+      "BAC",
+      "TMO",
+      "CSCO"
+    ],
+    "mega_tech": [
+      "AAPL",
+      "MSFT",
+      "GOOGL",
+      "AMZN",
+      "META",
+      "NVDA",
+      "TSLA",
+      "AVGO",
+      "ORCL",
+      "CRM",
+      "ADBE",
+      "NFLX",
+      "AMD",
+      "INTC",
+      "QCOM"
+    ],
+    "etf_sectors": [
+      "XLK",
+      "XLF",
+      "XLE",
+      "XLV",
+      "XLI",
+      "XLY",
+      "XLP",
+      "XLB",
+      "XLRE",
+      "XLU",
+      "XLC"
+    ],
+    "big_banks": [
+      "JPM",
+      "BAC",
+      "WFC",
+      "C",
+      "GS",
+      "MS",
+      "USB",
+      "PNC",
+      "TFC",
+      "SCHW"
+    ],
+    "semis": [
+      "NVDA",
+      "AVGO",
+      "AMD",
+      "QCOM",
+      "TXN",
+      "INTC",
+      "MU",
+      "AMAT",
+      "LRCX",
+      "KLAC",
+      "MRVL",
+      "ADI",
+      "NXPI",
+      "MCHP"
+    ],
+    "crypto_majors": [
+      "BTC-USD",
+      "ETH-USD",
+      "SOL-USD",
+      "DOGE-USD",
+      "AVAX-USD",
+      "LINK-USD",
+      "LTC-USD",
+      "BCH-USD"
+    ]
+  }
+}

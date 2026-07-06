@@ -1,0 +1,76 @@
+{
+  "Mean-reversion strategy": {
+    "prefix": "strategy-meanreversion",
+    "body": [
+      "strategy \"${1:My Strategy}\"",
+      "",
+      "when $${2:NVDA} at [lower_bollinger${3: std=1}]",
+      "  buy [${4:5}% portfolio]",
+      "",
+      "sell when $${2:NVDA} at [middle_bollinger]",
+      "  or [stop ${5:2}%]",
+      "  or [after ${6:10} bars]"
+    ],
+    "description": "Buy the lower Bollinger band touch, exit at the middle band"
+  },
+  "Momentum ranking portfolio": {
+    "prefix": "strategy-momentum",
+    "body": [
+      "strategy \"${1:Momentum Rotation}\"",
+      "",
+      "universe [${2:sp_top_30}]",
+      "rebalance ${3:monthly}",
+      "",
+      "hold top ${4:5} by [momentum ${5:126}]",
+      "  where price above [sma 200]"
+    ],
+    "description": "Hold the strongest names in a universe, rebalanced on a schedule"
+  },
+  "Wheel (options income)": {
+    "prefix": "strategy-wheel",
+    "body": [
+      "strategy \"${1:Wheel on F}\"",
+      "",
+      "universe $${2:F}",
+      "",
+      "wheel [delta=${3:25} dte=${4:45}]",
+      "",
+      "close at [profit ${5:50}%]",
+      "roll at [dte ${6:21}]"
+    ],
+    "description": "Cash-secured puts, covered calls if assigned"
+  },
+  "Pairs trade": {
+    "prefix": "strategy-pairs",
+    "body": [
+      "strategy \"${1:Gold Miners Ratio}\"",
+      "",
+      "when spread($${2:GLD}, $${3:GDX}) at [lower_bollinger ${4:60}]",
+      "  buy [${5:10}% portfolio]",
+      "",
+      "sell when spread($${2:GLD}, $${3:GDX}) at [middle_bollinger ${4:60}]",
+      "  or [after ${6:40} bars]"
+    ],
+    "description": "Mean-revert the ratio of two instruments, dollar-neutral"
+  },
+  "Long + short in one file": {
+    "prefix": "strategy-mixed",
+    "body": [
+      "strategy \"${1:Fade Both Tails}\"",
+      "",
+      "universe [${2:mega_tech}]",
+      "",
+      "when [rsi 2] < ${3:10}",
+      "  buy [${4:5}% portfolio]",
+      "",
+      "when [rsi 2] > ${5:90}",
+      "  short [${4:5}% portfolio]",
+      "",
+      "sell when [rsi 2] > 50",
+      "  or [after ${6:10} bars]",
+      "cover when [rsi 2] < 50",
+      "  or [after ${6:10} bars]"
+    ],
+    "description": "Mean-revert both extremes with mirrored exits"
+  }
+}

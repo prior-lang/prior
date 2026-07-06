@@ -62,6 +62,10 @@ formatter, the reference code generator, the English readback, and a local
 reference backtester (bring your own CSV/Parquet bars). Coming: bundled sample
 data, hosted full-history backtests (`--cloud`).
 
+## Editor support
+
+The [VS Code extension](editors/vscode/) gives you syntax highlighting, tag completions with parameter docs, hovers that show what every tag expands to, live compiler diagnostics, and `prior fmt` on save. Build it locally with `npx @vscode/vsce package` in `editors/vscode/` and install the `.vsix` — Marketplace listing coming.
+
 ## Documentation
 
 - **Guides and tutorials:** [autoquant.ai/prior](https://autoquant.ai/prior)
@@ -75,6 +79,7 @@ spec/SPEC.md         language specification (grammar, semantics, error contract)
 spec/TAGS.md         every tag: params, defaults, exact semantics, readback strings
 examples/*.prior     complete strategies, from one-liners to pairs trades — the executable spec
 python/prior_lang/   the reference implementation (zero-dependency parser + CLI)
+editors/vscode/      VS Code extension: highlighting, completions, hovers, live diagnostics
 ```
 
 ## License

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "PRIOR",
+  "scopeName": "source.prior",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#tag" },
+    { "include": "#spread" },
+    { "include": "#ticker" },
+    { "include": "#keywords" },
+    { "include": "#comparators" },
+    { "include": "#builtins" },
+    { "include": "#timeframe" },
+    { "include": "#currency" },
+    { "include": "#number" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.number-sign.prior",
+      "match": "#.*$"
+    },
+    "string": {
+      "name": "string.quoted.double.prior",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": []
+    },
+    "tag": {
+      "name": "meta.tag.prior",
+      "begin": "\\[",
+      "end": "\\]",
+      "beginCaptures": { "0": { "name": "punctuation.definition.tag.begin.prior" } },
+      "endCaptures": { "0": { "name": "punctuation.definition.tag.end.prior" } },
+      "patterns": [
+        {
+          "name": "entity.name.function.tag.prior",
+          "match": "(?i)(?<=\\[)\\s*[a-z_][a-z0-9_.]*"
+        },
+        {
+          "name": "variable.parameter.prior",
+          "match": "(?i)[a-z_][a-z0-9_]*(?=\\s*=)"
+        },
+        {
+          "name": "keyword.other.timeframe-suffix.prior",
+          "match": "(?i)\\bon\\s+\\d+[mhdw]\\b"
+        },
+        {
+          "name": "constant.numeric.prior",
+          "match": "\\$?\\d+(\\.\\d+)?(%|x)?"
+        },
+        {
+          "name": "constant.language.unit.prior",
+          "match": "(?i)\\b(atr|bars|days|weeks|top|after|portfolio)\\b"
+        }
+      ]
+    },
+    "spread": {
+      "name": "entity.name.function.spread.prior",
+      "match": "(?i)\\bspread(?=\\s*\\()"
+    },
+    "ticker": {
+      "name": "variable.other.ticker.prior",
+      "match": "\\$[A-Za-z][A-Za-z0-9\\-]*"
+    },
+    "keywords": {
+      "name": "keyword.control.prior",
+      "match": "(?i)\\b(strategy|universe|timeframe|when|if|buy|short|sell|cover|hold|rebalance|risk|where|weighted|equally|by|top|bottom|and|or|write|close|roll|half)\\b"
+    },
+    "comparators": {
+      "name": "keyword.operator.comparison.prior",
+      "match": "(?i)\\b(at|above|below|crosses)\\b|<=|>=|<|>"
+    },
+    "builtins": {
+      "name": "support.variable.series.prior",
+      "match": "(?i)\\b(price|volume)\\b"
+    },
+    "timeframe": {
+      "name": "constant.other.timeframe.prior",
+      "match": "\\b\\d+[mhdw]\\b"
+    },
+    "currency": {
+      "name": "constant.numeric.currency.prior",
+      "match": "\\$\\d+(\\.\\d+)?"
+    },
+    "number": {
+      "name": "constant.numeric.prior",
+      "match": "\\b\\d+(\\.\\d+)?(%|x)?"
+    }
+  }
+}

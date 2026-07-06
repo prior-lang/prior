@@ -48,13 +48,43 @@ def _load_program(path: str):
 
 
 def _cmd_validate(args) -> int:
-    _load_program(args.file)
-    print(f"ok — {args.file} is a valid PRIOR strategy")
+    # --stdin + --json is the editor-tooling contract: source on stdin,
+    # machine-readable diagnostics on stdout, exit 1 on errors.
+    try:
+        if args.stdin:
+            src = sys.stdin.read()
+            if (args.file or "").endswith(".json"):
+                src = strategy_to_source(json.loads(src))
+            parse_source(src, filename=args.file or "<stdin>")
+        else:
+            if not args.file:
+                raise SystemExit("prior validate needs a file (or --stdin)")
+            _load_program(args.file)
+    except PriorError as e:
+        if args.json:
+            print(json.dumps({"ok": False, "errors": [{
+                "line": e.line, "col": e.col, "message": e.message,
+                "suggestion": e.suggestion,
+            }]}))
+            return 1
+        raise
+    if args.json:
+        print(json.dumps({"ok": True, "errors": []}))
+    else:
+        print(f"ok — {args.file or '<stdin>'} is a valid PRIOR strategy")
     return 0
 
 
 def _cmd_fmt(args) -> int:
     # For .json input this converts: interchange JSON in, .prior text out.
+    if args.stdin:
+        src = sys.stdin.read()
+        if (args.file or "").endswith(".json"):
+            src = strategy_to_source(json.loads(src))
+        sys.stdout.write(format_program(parse_source(src, filename=args.file or "<stdin>")))
+        return 0
+    if not args.file:
+        raise SystemExit("prior fmt needs a file (or --stdin)")
     canonical = format_program(_load_program(args.file))
     if args.write:
         Path(args.file).write_text(canonical)
@@ -247,12 +277,15 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("validate", help="check a .prior file, print errors or ok")
-    p.add_argument("file")
+    p.add_argument("--json", action="store_true", help="machine-readable diagnostics (for editor integrations)")
+    p.add_argument("--stdin", action="store_true", help="read source from stdin instead of a file")
+    p.add_argument("file", nargs="?", help="path (optional with --stdin; still names the file in errors)")
     p.set_defaults(fn=_cmd_validate)
 
     p = sub.add_parser("fmt", help="print (or rewrite) the canonical formatting")
-    p.add_argument("file")
+    p.add_argument("file", nargs="?", help="path (optional with --stdin)")
     p.add_argument("--write", action="store_true", help="rewrite the file in place")
+    p.add_argument("--stdin", action="store_true", help="read source from stdin, print canonical text")
     p.set_defaults(fn=_cmd_fmt)
 
     p = sub.add_parser("compile", help="emit runnable Python (or --json for the interchange format)")
