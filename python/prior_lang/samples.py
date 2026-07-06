@@ -24,11 +24,33 @@ BASE_URL = os.environ.get("PRIOR_SAMPLES_URL", "https://samples.autoquant.ai")
 DEST_DIR = "prior-samples"
 
 # (category, timeframe) -> catalog entry. Default timeframe first.
+# Window sizes are source-imposed: the finer the bars, the shorter the
+# free history (Yahoo caps 1h at ~2y, 15m/5m at 60 days, 1m at 7 days).
 CATALOG: dict[tuple[str, str], dict] = {
     ("stocks", "1d"): {
         "file": "stocks_1d.csv.gz",
         "desc": "20 US large caps incl. SPY/QQQ, ~5 years of daily bars",
         "try": "universe $NVDA (or [mega_tech] names present in the file)",
+    },
+    ("stocks", "1h"): {
+        "file": "stocks_1h.csv.gz",
+        "desc": "Same 20 names, ~2 years of hourly bars",
+        "try": "timeframe 1h with on 1d gates",
+    },
+    ("stocks", "15m"): {
+        "file": "stocks_15m.csv.gz",
+        "desc": "Same 20 names, ~60 days of 15-minute bars",
+        "try": "timeframe 15m",
+    },
+    ("stocks", "5m"): {
+        "file": "stocks_5m.csv.gz",
+        "desc": "Same 20 names, ~60 days of 5-minute bars",
+        "try": "timeframe 5m",
+    },
+    ("stocks", "1m"): {
+        "file": "stocks_1m.csv.gz",
+        "desc": "Same 20 names, ~7 days of 1-minute bars",
+        "try": "timeframe 1m",
     },
     ("crypto", "1d"): {
         "file": "crypto_1d.csv.gz",
@@ -40,10 +62,45 @@ CATALOG: dict[tuple[str, str], dict] = {
         "desc": "The 8 [crypto_majors] pairs, ~2 years of hourly bars",
         "try": "timeframe 1h with on 4h / on 1d gates",
     },
+    ("crypto", "15m"): {
+        "file": "crypto_15m.csv.gz",
+        "desc": "The 8 [crypto_majors] pairs, ~1 year of 15-minute bars",
+        "try": "timeframe 15m with on 1h gates",
+    },
+    ("crypto", "5m"): {
+        "file": "crypto_5m.csv.gz",
+        "desc": "The 8 [crypto_majors] pairs, ~3 months of 5-minute bars",
+        "try": "timeframe 5m",
+    },
+    ("crypto", "1m"): {
+        "file": "crypto_1m.csv.gz",
+        "desc": "The 8 [crypto_majors] pairs, ~1 month of 1-minute bars",
+        "try": "timeframe 1m",
+    },
     ("forex", "1d"): {
         "file": "forex_1d.csv.gz",
         "desc": "7 majors (EURUSD, GBPUSD, USDJPY, ...), ~5 years of daily closes",
         "try": "when $EURUSD at [lower_bollinger] ...",
+    },
+    ("forex", "1h"): {
+        "file": "forex_1h.csv.gz",
+        "desc": "Same 7 majors, ~2 years of hourly bars",
+        "try": "timeframe 1h",
+    },
+    ("forex", "15m"): {
+        "file": "forex_15m.csv.gz",
+        "desc": "Same 7 majors, ~60 days of 15-minute bars",
+        "try": "timeframe 15m",
+    },
+    ("forex", "5m"): {
+        "file": "forex_5m.csv.gz",
+        "desc": "Same 7 majors, ~60 days of 5-minute bars",
+        "try": "timeframe 5m",
+    },
+    ("forex", "1m"): {
+        "file": "forex_1m.csv.gz",
+        "desc": "Same 7 majors, ~7 days of 1-minute bars",
+        "try": "timeframe 1m",
     },
 }
 

@@ -30,8 +30,8 @@ class _FakeResponse(io.BytesIO):
 
 def test_catalog_covers_the_three_categories():
     assert samples.categories() == ["stocks", "crypto", "forex"]
-    assert samples.timeframes("crypto") == ["1d", "1h"]
-    assert samples.timeframes("stocks") == ["1d"]
+    assert samples.timeframes("crypto") == ["1d", "1h", "15m", "5m", "1m"]
+    assert samples.timeframes("stocks") == ["1d", "1h", "15m", "5m", "1m"]
 
 
 def test_download_writes_file(tmp_path):
@@ -63,7 +63,7 @@ def test_unknown_category_lists_options_hint():
 
 def test_unknown_timeframe_lists_available():
     with pytest.raises(SystemExit, match="1d"):
-        samples.download("stocks", "5m")
+        samples.download("stocks", "3h")
 
 
 def test_cli_lists_catalog():
