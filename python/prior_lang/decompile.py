@@ -89,6 +89,43 @@ def _condition_to_term(cond: dict):
             named["period"] = ("number", _n(p["period"]))
         return Predicate(_tag("heavy_volume", pos, named))
 
+    if name in ("price_new_high", "price_new_low"):
+        surface = "new_high" if name.endswith("high") else "new_low"
+        pos = []
+        if _n(p.get("period", 252)) != 252:
+            pos.append(("number", _n(p["period"])))
+        return Predicate(_tag(surface, pos))
+
+    if name in ("gap_up", "gap_down"):
+        pos = []
+        if _n(p.get("min_gap_pct", 2.0)) != 2.0:
+            pos.append(("percent", _n(p["min_gap_pct"])))
+        return Predicate(_tag(name, pos))
+
+    if name in ("up_days", "down_days"):
+        return Predicate(_tag(name, [("number", _n(p["count"]))]))
+
+    if name in ("price_above_level", "price_below_level"):
+        side = "above" if "above" in name else "below"
+        return Comparison(("price",), side, ("number", _n(p["level"])))
+
+    if name in ("adx_greater_than", "adx_less_than"):
+        pos = []
+        if _n(p.get("period", 14)) != 14:
+            pos.append(("number", _n(p["period"])))
+        cmp = ">" if name.endswith("greater_than") else "<"
+        return Comparison(_tag("adx", pos), cmp, ("number", _n(p["threshold"])))
+
+    if name in ("stoch_less_than", "stoch_greater_than", "stoch_crosses_above", "stoch_crosses_below"):
+        pos, named = [], {}
+        if _n(p.get("period", 14)) != 14:
+            pos.append(("number", _n(p["period"])))
+        if _n(p.get("smooth", 3)) != 3:
+            named["smooth"] = ("number", _n(p["smooth"]))
+        cmp = {"stoch_less_than": "<", "stoch_greater_than": ">",
+               "stoch_crosses_above": "crosses_above", "stoch_crosses_below": "crosses_below"}[name]
+        return Comparison(_tag("stoch", pos, named), cmp, ("number", _n(p["threshold"])))
+
     raise PriorError(f"no PRIOR surface syntax for condition '{name}'")
 
 

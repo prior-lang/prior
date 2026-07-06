@@ -1,4 +1,4 @@
-# PRIOR Tag Reference — v0.1 (draft)
+# PRIOR Tag Reference — v0.3 (draft)
 
 Every tag in the language, its parameters, defaults, exact semantics, and what it compiles to. This file is the source of truth for the compiler's tag registry, the editor's autocomplete, and the `prior explain` readback strings.
 
@@ -99,6 +99,19 @@ Use bare: `when [macd_cross_up]`. Compiles to `macd_crosses_above_signal` / `mac
 | `period` | named | `60` |
 
 `[heavy_volume top 10%]` → `volume_in_top_pct {top_pct: 10, period: 60}`: this bar's volume is in the top 10% of the trailing 60-bar distribution. Readback: *"volume is in the top {N}% of the last {period} bars"*.
+
+### v0.3 additions — breakouts, gaps, streaks, levels, regime, stochastic
+
+| Tag / form | Kind | Params (defaults) | Compiles to |
+|---|---|---|---|
+| `[new_high]` / `[new_low]` | predicate | period (252) | `price_new_high` / `price_new_low` — close at/beyond the highest/lowest close of the prior N bars |
+| `[gap_up 2%]` / `[gap_down 2%]` | predicate | gap (2%) | `gap_up` / `gap_down` — open at least N% above/below the prior close |
+| `[up_days 3]` / `[down_days 3]` | predicate | count (required) | `up_days` / `down_days` — N consecutive higher/lower closes |
+| `price above 250` / `price below 10` | comparison | level | `price_above_level` / `price_below_level` — absolute price levels |
+| `[adx] > 25` / `[adx] < 15` | operand | period (14) | `adx_greater_than` / `adx_less_than` — Wilder ADX trend-regime filter (threshold 0-100) |
+| `[stoch] < 20`, `> 80`, `crosses above/below N` | operand | period (14), smooth (3) | `stoch_*` family — slow %K vs threshold (0-100) |
+
+Readbacks: *"price makes a new {period}-bar closing {high|low}"* · *"price gaps {up|down} at least {N}% at the open"* · *"the last {N} closes were each {higher|lower} than the one before"* · *"price is {above|below} {level}"* · *"ADX({period}) is {above|below} {threshold}"* · *"stochastic %K({period}) {is below|is above|crosses above|crosses below} {threshold}"*.
 
 ---
 

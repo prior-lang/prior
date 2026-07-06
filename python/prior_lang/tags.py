@@ -133,6 +133,43 @@ _register(TagSpec(
     named={"period": _p("period", NUMBER, 60)},
 ))
 
+_register(TagSpec(
+    name="new_high", kind="condition", usage="predicate",
+    positional=[_p("period", NUMBER, 252)],
+    named={"period": _p("period", NUMBER, 252)},
+))
+_register(TagSpec(
+    name="new_low", kind="condition", usage="predicate",
+    positional=[_p("period", NUMBER, 252)],
+    named={"period": _p("period", NUMBER, 252)},
+))
+_register(TagSpec(
+    name="gap_up", kind="condition", usage="predicate",
+    positional=[_p("gap", PERCENT, 2.0)],
+))
+_register(TagSpec(
+    name="gap_down", kind="condition", usage="predicate",
+    positional=[_p("gap", PERCENT, 2.0)],
+))
+_register(TagSpec(
+    name="up_days", kind="condition", usage="predicate",
+    positional=[_p("count", NUMBER, required=True)],
+))
+_register(TagSpec(
+    name="down_days", kind="condition", usage="predicate",
+    positional=[_p("count", NUMBER, required=True)],
+))
+_register(TagSpec(
+    name="adx", kind="condition", usage="operand",
+    positional=[_p("period", NUMBER, 14)],
+    named={"period": _p("period", NUMBER, 14)},
+))
+_register(TagSpec(
+    name="stoch", kind="condition", usage="operand",
+    positional=[_p("period", NUMBER, 14)],
+    named={"period": _p("period", NUMBER, 14), "smooth": _p("smooth", NUMBER, 3)},
+))
+
 # ── Sizing tags (name-first form; the two special forms are handled
 #    directly by the parser: [N% portfolio] and [$N]) ────────────────
 

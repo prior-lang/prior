@@ -18,7 +18,7 @@ from .errors import PriorError
 from .lexer import LogicalLine, Token, tokenize
 from .tags import DOLLAR, MULT, NUMBER, PERCENT, TAGS, WORD, TagSpec
 
-VERSION = "0.2"
+VERSION = "0.3"
 
 _BOLLINGER = {"lower_bollinger": "lower", "middle_bollinger": "middle", "upper_bollinger": "upper"}
 _PREDICATE_MAP = {
@@ -28,6 +28,12 @@ _PREDICATE_MAP = {
     "quiet": "atr_less_than_pct",
     "volume_spike": "volume_greater_than_avg",
     "heavy_volume": "volume_in_top_pct",
+    "new_high": "price_new_high",
+    "new_low": "price_new_low",
+    "gap_up": "gap_up",
+    "gap_down": "gap_down",
+    "up_days": "up_days",
+    "down_days": "down_days",
 }
 
 
@@ -175,6 +181,12 @@ def _desugar(term) -> dict:
             return {"condition": name, "params": {"multiplier": p["multiplier"], "period": int(p["period"])}}
         if tag.name == "heavy_volume":
             return {"condition": name, "params": {"top_pct": p["top_pct"], "period": int(p["period"])}}
+        if tag.name in ("new_high", "new_low"):
+            return {"condition": name, "params": {"period": int(p["period"])}}
+        if tag.name in ("gap_up", "gap_down"):
+            return {"condition": name, "params": {"min_gap_pct": float(p["gap"])}}
+        if tag.name in ("up_days", "down_days"):
+            return {"condition": name, "params": {"count": int(p["count"])}}
         # MACD crosses
         return {"condition": name, "params": {"fast": int(p["fast"]), "slow": int(p["slow"]), "signal": int(p["signal"])}}
 
@@ -211,6 +223,15 @@ def _desugar(term) -> dict:
             line=term.line,
         )
 
+    if left_is_price and isinstance(right, tuple) and right[0] == "number":
+        if cmp not in ("above", "below"):
+            raise PriorError(
+                f"price compares to a level with above/below, not '{_cmp_text(cmp)}'",
+                line=term.line,
+                suggestion="e.g. price above 250",
+            )
+        return {"condition": f"price_{cmp}_level", "params": {"level": float(right[1])}}
+
     if isinstance(left, TagNode) and left.name == "rsi":
         if not (isinstance(right, tuple) and right[0] == "number"):
             raise PriorError("[rsi] compares against a number from 0 to 100", line=term.line)
@@ -231,6 +252,45 @@ def _desugar(term) -> dict:
                 line=term.line,
             )
         return {"condition": name, "params": {"period": period, "threshold": threshold}}
+
+    if isinstance(left, TagNode) and left.name == "adx":
+        if not (isinstance(right, tuple) and right[0] == "number"):
+            raise PriorError("[adx] compares against a number from 0 to 100", line=term.line)
+        threshold = float(right[1])
+        if not (0 <= threshold <= 100):
+            raise PriorError(f"ADX threshold {threshold:g} is out of range — ADX lives between 0 and 100", line=term.line)
+        table = {"<": "adx_less_than", ">": "adx_greater_than"}
+        name = table.get(cmp)
+        if name is None:
+            raise PriorError(
+                f"[adx] supports < and > — not '{_cmp_text(cmp)}'", line=term.line,
+                suggestion="[adx] > 25 filters for trending regimes",
+            )
+        return {"condition": name, "params": {"period": int(left.params["period"]), "threshold": threshold}}
+
+    if isinstance(left, TagNode) and left.name == "stoch":
+        if not (isinstance(right, tuple) and right[0] == "number"):
+            raise PriorError("[stoch] compares against a number from 0 to 100", line=term.line)
+        threshold = float(right[1])
+        if not (0 <= threshold <= 100):
+            raise PriorError(f"stochastic threshold {threshold:g} is out of range — %K lives between 0 and 100", line=term.line)
+        table = {
+            "<": "stoch_less_than",
+            ">": "stoch_greater_than",
+            "crosses_above": "stoch_crosses_above",
+            "crosses_below": "stoch_crosses_below",
+        }
+        name = table.get(cmp)
+        if name is None:
+            raise PriorError(
+                f"[stoch] supports <, >, crosses above, crosses below — not '{_cmp_text(cmp)}'",
+                line=term.line,
+            )
+        return {"condition": name, "params": {
+            "period": int(left.params["period"]),
+            "smooth": int(left.params["smooth"]),
+            "threshold": threshold,
+        }}
 
     if isinstance(left, TagNode) and left.name in ("sma", "ema") and isinstance(right, TagNode):
         if right.name != left.name:

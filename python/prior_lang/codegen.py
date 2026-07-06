@@ -221,6 +221,97 @@ def _hcode(condition: Dict[str, Any]) -> str:
             f"    cond = (vol >= thr).fillna(False)"
         )
 
+    if ctype == "price_new_high":
+        n = int(p.get("period", 252))
+        return (
+            f"prior_max = close.shift(1).rolling({n}, min_periods={n}).max()\n"
+            f"    cond = (close >= prior_max).fillna(False)"
+        )
+    if ctype == "price_new_low":
+        n = int(p.get("period", 252))
+        return (
+            f"prior_min = close.shift(1).rolling({n}, min_periods={n}).min()\n"
+            f"    cond = (close <= prior_min).fillna(False)"
+        )
+    if ctype == "gap_up":
+        g = float(p.get("min_gap_pct", 2.0))
+        return (
+            f"gap_pct = (df['open'] / close.shift(1) - 1) * 100\n"
+            f"    cond = (gap_pct >= {g}).fillna(False)"
+        )
+    if ctype == "gap_down":
+        g = float(p.get("min_gap_pct", 2.0))
+        return (
+            f"gap_pct = (df['open'] / close.shift(1) - 1) * 100\n"
+            f"    cond = (gap_pct <= -{g}).fillna(False)"
+        )
+    if ctype == "up_days":
+        n = int(p["count"])
+        return (
+            f"ups = (close.diff() > 0).rolling({n}, min_periods={n}).sum()\n"
+            f"    cond = (ups == {n}).fillna(False)"
+        )
+    if ctype == "down_days":
+        n = int(p["count"])
+        return (
+            f"downs = (close.diff() < 0).rolling({n}, min_periods={n}).sum()\n"
+            f"    cond = (downs == {n}).fillna(False)"
+        )
+    if ctype == "price_above_level":
+        lvl = float(p["level"])
+        return f"cond = (close > {lvl}).fillna(False)"
+    if ctype == "price_below_level":
+        lvl = float(p["level"])
+        return f"cond = (close < {lvl}).fillna(False)"
+    if ctype in ("adx_greater_than", "adx_less_than"):
+        n = int(p.get("period", 14))
+        t = float(p["threshold"])
+        op = ">" if ctype == "adx_greater_than" else "<"
+        return (
+            f"prev_close = close.shift(1)\n"
+            f"    tr = pd.concat([(df['high'] - df['low']),\n"
+            f"                    (df['high'] - prev_close).abs(),\n"
+            f"                    (df['low'] - prev_close).abs()], axis=1).max(axis=1)\n"
+            f"    up_move = df['high'].diff()\n"
+            f"    down_move = -df['low'].diff()\n"
+            f"    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)\n"
+            f"    minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)\n"
+            f"    atr = tr.ewm(alpha=1 / {n}, adjust=False, min_periods={n}).mean()\n"
+            f"    plus_di = 100 * plus_dm.ewm(alpha=1 / {n}, adjust=False, min_periods={n}).mean() / atr\n"
+            f"    minus_di = 100 * minus_dm.ewm(alpha=1 / {n}, adjust=False, min_periods={n}).mean() / atr\n"
+            f"    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)\n"
+            f"    adx = dx.ewm(alpha=1 / {n}, adjust=False, min_periods={n}).mean()\n"
+            f"    cond = (adx {op} {t}).fillna(False)"
+        )
+    if ctype in ("stoch_less_than", "stoch_greater_than"):
+        n = int(p.get("period", 14))
+        s = int(p.get("smooth", 3))
+        t = float(p["threshold"])
+        op = "<" if ctype == "stoch_less_than" else ">"
+        return (
+            f"low_min = df['low'].rolling({n}, min_periods={n}).min()\n"
+            f"    high_max = df['high'].rolling({n}, min_periods={n}).max()\n"
+            f"    k_fast = 100 * (close - low_min) / (high_max - low_min).replace(0, np.nan)\n"
+            f"    k = k_fast.rolling({s}, min_periods={s}).mean()\n"
+            f"    cond = (k {op} {t}).fillna(False)"
+        )
+    if ctype in ("stoch_crosses_above", "stoch_crosses_below"):
+        n = int(p.get("period", 14))
+        s = int(p.get("smooth", 3))
+        t = float(p["threshold"])
+        if ctype == "stoch_crosses_above":
+            expr = f"cond = ((prev <= {t}) & (k > {t})).fillna(False)"
+        else:
+            expr = f"cond = ((prev >= {t}) & (k < {t})).fillna(False)"
+        return (
+            f"low_min = df['low'].rolling({n}, min_periods={n}).min()\n"
+            f"    high_max = df['high'].rolling({n}, min_periods={n}).max()\n"
+            f"    k_fast = 100 * (close - low_min) / (high_max - low_min).replace(0, np.nan)\n"
+            f"    k = k_fast.rolling({s}, min_periods={s}).mean()\n"
+            f"    prev = k.shift(1)\n"
+            f"    {expr}"
+        )
+
     raise ValueError(f"Unknown condition type: {ctype}")
 
 

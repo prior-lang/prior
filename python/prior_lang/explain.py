@@ -73,6 +73,27 @@ def _condition_text(cond: dict) -> str:
             f"volume is in the top {_num(p.get('top_pct', 10))}% of the last "
             f"{_plural(p.get('period', 60), 'bar')}"
         )
+    if name in ("price_new_high", "price_new_low"):
+        side = "high" if name.endswith("high") else "low"
+        return f"price makes a new {_num(p.get('period', 252))}-bar closing {side}"
+    if name in ("gap_up", "gap_down"):
+        d = "up" if name == "gap_up" else "down"
+        return f"price gaps {d} at least {_num(p.get('min_gap_pct', 2))}% at the open"
+    if name in ("up_days", "down_days"):
+        d = "higher" if name == "up_days" else "lower"
+        return f"the last {_plural(p.get('count'), 'close')} were each {d} than the one before"
+    if name in ("price_above_level", "price_below_level"):
+        side = "above" if "above" in name else "below"
+        return f"price is {side} {_num(p.get('level'))}"
+    if name in ("adx_greater_than", "adx_less_than"):
+        side = "above" if "greater" in name else "below"
+        return f"ADX({_num(p.get('period', 14))}) is {side} {_num(p.get('threshold'))}"
+    if name in ("stoch_less_than", "stoch_greater_than"):
+        side = "below" if "less" in name else "above"
+        return f"stochastic %K({_num(p.get('period', 14))}) is {side} {_num(p.get('threshold'))}"
+    if name in ("stoch_crosses_above", "stoch_crosses_below"):
+        d = "above" if name.endswith("above") else "below"
+        return f"stochastic %K({_num(p.get('period', 14))}) crosses {d} {_num(p.get('threshold'))}"
     return name
 
 
