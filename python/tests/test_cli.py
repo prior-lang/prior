@@ -74,6 +74,40 @@ def test_backtest_on_synthetic_csv(tmp_path, capsys):
     assert "Trades" in out
 
 
+def test_backtest_multi_ticker_universe(tmp_path, capsys):
+    pd = pytest.importorskip("pandas")
+    import numpy as np
+
+    # Strategy scoped to a manual two-ticker universe
+    strat = tmp_path / "pair.prior"
+    strat.write_text(
+        "universe $AAPL $MSFT\n"
+        "when [macd_cross_up]\n"
+        "  buy [10% portfolio]\n"
+        "sell when [macd_cross_down]\n"
+    )
+
+    # Stacked multi-ticker CSV: AAPL + MSFT (in universe) + TSLA (not)
+    rng = np.random.default_rng(3)
+    frames = []
+    for ticker in ("AAPL", "MSFT", "TSLA"):
+        closes = 100 + np.cumsum(rng.normal(0, 1.0, 200))
+        frames.append(pd.DataFrame({
+            "date": pd.date_range("2025-01-01", periods=200, freq="B"),
+            "ticker": ticker, "close": closes, "volume": 1_000_000,
+        }))
+    data = tmp_path / "universe.csv"
+    pd.concat(frames).to_csv(data, index=False)
+
+    assert main(["backtest", str(strat), "--data", str(data)]) == 0
+    out = capsys.readouterr().out
+    assert "2 tickers" in out            # AAPL + MSFT ran
+    assert "AAPL" in out and "MSFT" in out
+    assert "skipped (in file, not in universe): TSLA" in out
+    assert "average" in out
+    assert "independent per-ticker runs" in out
+
+
 def test_backtest_cloud_stub(capsys):
     assert main(["backtest", BOLLINGER, "--cloud"]) == 0
     assert "coming soon" in capsys.readouterr().out.lower()

@@ -28,13 +28,19 @@ def _require_pandas():
 
 def load_bars(path: str):
     """Load OHLCV bars from CSV or Parquet. Column names are matched
-    case-insensitively; a date/time column becomes the index if present."""
+    case-insensitively; a date/time column becomes the index if present.
+
+    A `ticker` (or `symbol`) column marks a multi-instrument file — one
+    stacked set of rows per ticker — and is preserved for the universe
+    runner to group on."""
     pd, _np = _require_pandas()
     if path.endswith((".parquet", ".pq")):
         df = pd.read_parquet(path)
     else:
         df = pd.read_csv(path)
     df.columns = [str(c).strip().lower() for c in df.columns]
+    if "symbol" in df.columns and "ticker" not in df.columns:
+        df = df.rename(columns={"symbol": "ticker"})
     for date_col in ("date", "time", "timestamp", "datetime"):
         if date_col in df.columns:
             df[date_col] = pd.to_datetime(df[date_col])
@@ -49,6 +55,52 @@ def load_bars(path: str):
     if "volume" not in df.columns:
         df["volume"] = 0
     return df
+
+
+def resolve_universe_tickers(strategy: dict) -> list[str] | None:
+    """The tickers a strategy's universe declares, or None if unknown."""
+    from .tags import UNIVERSE_TICKERS
+
+    uni = strategy.get("universe", {}) or {}
+    if uni.get("type") == "prebuilt":
+        return UNIVERSE_TICKERS.get(uni.get("key"))
+    return uni.get("tickers")
+
+
+def run_universe_backtest(strategy: dict, df) -> dict:
+    """Run the strategy independently over each ticker in a multi-ticker
+    frame, filtered to the strategy's universe.
+
+    These are independent per-instrument runs — each ticker gets the full
+    hypothetical allocation, and risk guards like max_positions have no
+    cross-ticker meaning here. Portfolio-level simulation with shared
+    capital is the reference runner's job (AutoQuant desktop / --cloud).
+    """
+    universe = resolve_universe_tickers(strategy)
+    in_file = [str(t).upper() for t in df["ticker"].unique()]
+
+    if universe is not None:
+        wanted = [t for t in in_file if t in set(universe)]
+        skipped = sorted(set(in_file) - set(universe))
+        not_in_file = sorted(set(universe) - set(in_file))
+    else:
+        wanted, skipped, not_in_file = in_file, [], []
+
+    per_ticker = []
+    for ticker in wanted:
+        bars = df[df["ticker"].str.upper() == ticker].drop(columns=["ticker"]).sort_index()
+        result = run_backtest(strategy, bars)
+        result["ticker"] = ticker
+        per_ticker.append(result)
+
+    returns = [r["total_return_pct"] for r in per_ticker]
+    return {
+        "per_ticker": per_ticker,
+        "skipped_not_in_universe": skipped,
+        "universe_not_in_file": not_in_file,
+        "avg_return_pct": round(sum(returns) / len(returns), 2) if returns else None,
+        "total_trades": sum(r["trades"] for r in per_ticker),
+    }
 
 
 def run_backtest(strategy: dict, df) -> dict:

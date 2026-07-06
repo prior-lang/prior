@@ -42,6 +42,37 @@ def _p(name, kind, default=None, required=False):
 
 UNIVERSE_KEYS = ["sp_top_30", "mega_tech", "etf_sectors", "big_banks", "semis", "crypto_majors"]
 
+# Prebuilt universe contents, mirroring the reference runner's lists (and
+# the table in spec/TAGS.md — the three must move together). Used by the
+# local backtester to filter multi-ticker data files.
+UNIVERSE_TICKERS: dict[str, list[str]] = {
+    "sp_top_30": [
+        "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "ORCL",
+        "LLY", "AVGO", "JPM", "V", "UNH", "XOM", "MA", "JNJ", "PG", "HD",
+        "COST", "ABBV", "MRK", "WMT", "NFLX", "CRM", "ADBE", "KO", "PEP",
+        "BAC", "TMO", "CSCO",
+    ],
+    "mega_tech": [
+        "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "AVGO",
+        "ORCL", "CRM", "ADBE", "NFLX", "AMD", "INTC", "QCOM",
+    ],
+    "etf_sectors": [
+        "XLK", "XLF", "XLE", "XLV", "XLI", "XLY", "XLP", "XLB", "XLRE",
+        "XLU", "XLC",
+    ],
+    "big_banks": [
+        "JPM", "BAC", "WFC", "C", "GS", "MS", "USB", "PNC", "TFC", "SCHW",
+    ],
+    "semis": [
+        "NVDA", "AVGO", "AMD", "QCOM", "TXN", "INTC", "MU", "AMAT", "LRCX",
+        "KLAC", "MRVL", "ADI", "NXPI", "MCHP",
+    ],
+    "crypto_majors": [
+        "BTC-USD", "ETH-USD", "SOL-USD", "DOGE-USD", "AVAX-USD", "LINK-USD",
+        "LTC-USD", "BCH-USD",
+    ],
+}
+
 
 TAGS: dict[str, TagSpec] = {}
 

@@ -41,6 +41,7 @@ prior fmt strategy.prior               canonical formatting (--write rewrites in
 prior compile strategy.prior           emit runnable Python (--json for the interchange format)
 prior explain strategy.prior           every layer: English readback, JSON, generated Python
 prior backtest strategy.prior --data bars.csv    metrics over your own OHLCV data
+                                                 (add a ticker column to run a whole universe from one file)
 ```
 
 Install: `pip install prior-lang` (add `[backtest]` for the backtester's pandas dependency).

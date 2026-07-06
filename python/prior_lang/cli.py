@@ -82,13 +82,43 @@ def _cmd_backtest(args) -> int:
         raise SystemExit(
             "prior backtest needs bars: --data bars.csv (columns: date,open,high,low,close,volume)"
         )
-    from .backtest import load_bars, run_backtest  # lazy: needs pandas
+    from .backtest import load_bars, run_backtest, run_universe_backtest  # lazy: needs pandas
 
     strategy = parse_source(_read(args.file), filename=args.file).to_json()
     df = load_bars(args.data)
-    result = run_backtest(strategy, df)
-
     name = strategy.get("name") or Path(args.file).stem
+
+    if "ticker" in df.columns:
+        # Multi-ticker file: independent per-ticker runs across the universe.
+        res = run_universe_backtest(strategy, df)
+        rows = res["per_ticker"]
+        if not rows:
+            raise SystemExit(
+                "no tickers in the data file match the strategy's universe"
+            )
+        print(f"{name} — {len(rows)} tickers from {args.data} (independent runs)")
+        header = f"  {'TICKER':<9} {'RETURN':>8} {'B&H':>8} {'SHARPE':>7} {'MAXDD':>7} {'TRADES':>6} {'WIN%':>6}"
+        print(header)
+        for r in sorted(rows, key=lambda x: x["total_return_pct"], reverse=True):
+            win = f"{r['win_rate_pct']:.0f}" if r["win_rate_pct"] is not None else "–"
+            print(
+                f"  {r['ticker']:<9} {r['total_return_pct']:>7.2f}% {r['buy_hold_return_pct']:>7.2f}%"
+                f" {r['sharpe']:>7.3f} {r['max_drawdown_pct']:>6.2f}% {r['trades']:>6} {win:>6}"
+            )
+        print(f"  {'':<9} {'-------':>8}")
+        print(f"  {'average':<9} {res['avg_return_pct']:>7.2f}%{'':<17} total trades: {res['total_trades']}")
+        if res["skipped_not_in_universe"]:
+            print(f"\n  skipped (in file, not in universe): {', '.join(res['skipped_not_in_universe'])}")
+        if res["universe_not_in_file"]:
+            print(f"  no data provided for: {', '.join(res['universe_not_in_file'])}")
+        print(
+            "\nNote: independent per-ticker runs (each gets the full allocation; "
+            "max_positions does not apply across tickers).\n"
+            "Portfolio-level simulation on full-history data: prior backtest --cloud (coming soon)"
+        )
+        return 0
+
+    result = run_backtest(strategy, df)
     print(f"{name} — {result['bars']} bars from {args.data}")
     rows = [
         ("Total return", f"{result['total_return_pct']}%"),
@@ -138,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("backtest", help="run the strategy over a bars file and print metrics")
     p.add_argument("file")
-    p.add_argument("--data", help="CSV or Parquet with date,open,high,low,close,volume")
+    p.add_argument("--data", help="CSV or Parquet with date,open,high,low,close,volume; add a ticker column to run a whole universe from one file")
     p.add_argument("--cloud", action="store_true", help="run against hosted full-history data (coming soon)")
     p.set_defaults(fn=_cmd_backtest)
 
