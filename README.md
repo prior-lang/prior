@@ -33,7 +33,7 @@ strategy.prior  →  JSON strategy object  →  generated Python  →  backtest 
 
 PRIOR compiles to an open JSON interchange format, then to plain Python you can read, audit, and run. `prior explain` shows every layer, plus an English readback of what your strategy does. Nothing is magic.
 
-The reference runner is [AutoQuant](https://autoquant.ai), where PRIOR strategies backtest and deploy against real market data. The format is open; nothing prevents other runners.
+The reference runner is [AutoQuant](https://autoquant.ai), where PRIOR strategies scan live markets, backtest against full market history, and deploy to paper or live trading. The format is open; nothing prevents other runners.
 
 ## The toolchain
 
@@ -54,6 +54,12 @@ formatter, the reference code generator, the English readback, and a local
 reference backtester (bring your own CSV/Parquet bars). Coming: bundled sample
 data, hosted full-history backtests (`--cloud`).
 
+## Documentation
+
+- **Guides and tutorials:** [autoquant.ai/prior](https://autoquant.ai/prior)
+- **Language specification:** [`spec/SPEC.md`](spec/SPEC.md) — the source of truth for implementers
+- **Tag reference:** [`spec/TAGS.md`](spec/TAGS.md) — every tag, its defaults, and exactly what it expands to
+
 ## Repository layout
 
 ```
@@ -66,3 +72,7 @@ python/prior_lang/   the reference implementation (zero-dependency parser + CLI)
 ## License
 
 MIT.
+
+---
+
+PRIOR is built and stewarded by [AutoQuant](https://autoquant.ai), the local-first desktop platform for researching, backtesting, and deploying trading strategies.
