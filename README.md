@@ -5,12 +5,10 @@
 PRIOR is a tiny declarative language for expressing trading strategies as testable hypotheses. A complete strategy fits in a few lines that read like the idea in your head:
 
 ```prior
-universe [sp_top_30]
-
-when price at [lower_bollinger std=1]
+when $NVDA at [lower_bollinger std=1]
   buy [5% portfolio]
 
-sell when price at [middle_bollinger]
+sell when $NVDA at [middle_bollinger]
   or [stop 1.5%]
   or [after 5 bars]
 ```
