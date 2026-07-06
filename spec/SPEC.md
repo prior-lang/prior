@@ -1,8 +1,8 @@
-# PRIOR Language Specification — v0.4 (draft)
+# PRIOR Language Specification — v0.5 (draft)
 
 **PRIOR** — Portable Rules for Indicators, Orders & Risk. A declarative language for expressing trading strategies as testable hypotheses. This spec is the source of truth for the parser, formatter, and compiler. Pre-1.0, breakable with notice.
 
-Status: draft. v0.4 (2026-07-06) adds ranking strategies (hold top N by [metric], rebalance calendars, where-filters, weighting). v0.3 (2026-07-06) adds the vocabulary sweep (new highs/lows, gaps, streaks, price levels, ADX, stochastic, VWAP, squeeze, OBV) and richer exits (ATR-unit stops/targets, chandelier trailing, breakeven). v0.2 (2026-07-06) added short strategies. v0.1 drafted 2026-07-05. Companion documents: `TAGS.md` (tag reference), `../examples/*.prior` (the executable spec — every example must parse, format canonically, and compile).
+Status: draft. v0.5 (2026-07-06) adds multi-timeframe conditions (on <tf> inside condition tags, closed-bar no-repaint semantics). v0.4 (2026-07-06) adds ranking strategies (hold top N by [metric], rebalance calendars, where-filters, weighting). v0.3 (2026-07-06) adds the vocabulary sweep (new highs/lows, gaps, streaks, price levels, ADX, stochastic, VWAP, squeeze, OBV) and richer exits (ATR-unit stops/targets, chandelier trailing, breakeven). v0.2 (2026-07-06) added short strategies. v0.1 drafted 2026-07-05. Companion documents: `TAGS.md` (tag reference), `../examples/*.prior` (the executable spec — every example must parse, format canonically, and compile).
 
 ---
 
@@ -42,7 +42,7 @@ These are not stylistic preferences. Violating any of them is a spec bug.
 
 `strategy` `universe` `timeframe` `when` `if` `buy` `short` `sell` `cover` `hold` `rebalance` `top` `bottom` `by` `where` `weighted` `equally` `risk` `and` `or` `at` `above` `below` `crosses` `price` `volume`
 
-Reserved for future versions: `on` (multi-timeframe).
+`on` is tag syntax (multi-timeframe suffix), not a statement keyword.
 
 ---
 
@@ -81,7 +81,8 @@ comparator     = "at" | "above" | "below"
 operand        = "price" | "volume" | tag | NUMBER | PERCENT | TICKER ;
 
 tag            = "[" , tag_body , "]" ;
-tag_body       = TAGNAME , { tag_arg }        (* [lower_bollinger std=1], [stop 1.5%] *)
+tag_body       = TAGNAME , { tag_arg } , [ "on" , TIMEFRAME ]
+                                              (* [rsi on 4h], [sma 200 on 1d] *)
                | PERCENT , "portfolio"        (* [5% portfolio] — sizing special form *)
                | DOLLAR ;                     (* [$10000] — sizing special form *)
 tag_arg        = tag_value | TAGNAME , "=" , tag_value ;
@@ -147,6 +148,7 @@ Cross-statement checks:
 
 ## 6. Evaluation semantics
 
+- **Multi-timeframe conditions.** A condition tag may carry `on <tf>` where `<tf>` is COARSER than the strategy timeframe (finer or equal is a compile error). The whole condition is judged on that timeframe's **closed** bars — the strategy's bars are resampled (weeks end Friday), the condition evaluates there, and its verdict forward-fills onto the strategy's bars. A higher-TF bar's verdict is visible only from its close onward: **the gate cannot repaint**, structurally. Both sides of a comparison must share one timeframe. Multi-timeframe strategies require datetime-indexed bars (a clear runtime error otherwise). Mixing frames inside one comparison (strategy-TF price against a higher-TF level) and `on` inside `hold` where-filters are future extensions.
 - **Ranking strategies** (`hold`) are a third form, mutually exclusive with rules (`when`/`sell`): `hold` IS the entry, the exit, and the sizing. On each rebalance close (daily / weekly = last trading day of ISO week / monthly = last trading day of month, default monthly), eligible tickers (metric non-NaN, `where` conditions true) are ranked; ties break alphabetically; the top/bottom N are held equally weighted or `weighted by` a metric, capped by `risk [max_position N%]` (excess redistributes pro-rata once, remainder is cash); fewer qualifiers than N leaves the shortfall in cash; weights hold between rebalances. **Universes are today's constituents — long ranking backtests inherit survivorship bias.** Point-in-time constituents are a hosted-data concern.
 - **Direction.** A strategy is long (`buy` … `sell`) or short (`short` … `cover`), one direction per strategy in v0.2; the pairing is enforced (`buy` with `cover` is a compile error that teaches the vocabulary). Short signals are 0/-1. Exit tags are direction-relative: a short's `[stop]` sits above entry, its `[target]` below, and `[trailing]` trails the low-water mark. Condition tags are direction-neutral predicates and never change meaning.
 - **Bar-close evaluation.** All conditions are evaluated on completed bars. There is no intrabar evaluation in v0.1 backtests. (Live/paper runners may place broker-side bracket orders for stops/targets that fill intrabar; this backtest-vs-live divergence is documented behavior, not a bug — backtests are conservative.)

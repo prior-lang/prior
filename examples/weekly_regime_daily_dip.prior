@@ -1,0 +1,19 @@
+# Two clocks, one strategy: the regime is judged on WEEKLY closed bars
+# (a 40-week base, roughly the 200-day), the dip is bought on daily bars.
+# The weekly gate cannot repaint — a mid-week rally does not flip it until
+# the weekly bar actually closes. That guarantee is structural, not a
+# setting.
+
+strategy "Weekly Regime, Daily Dip"
+
+universe [sp_top_30]
+timeframe 1d
+
+when price at [lower_bollinger] and price above [sma 40 on 1w]
+  buy [5% portfolio]
+
+sell when price at [middle_bollinger]
+  or [stop 3%]
+  or [after 10 bars]
+
+risk [max_positions 5]

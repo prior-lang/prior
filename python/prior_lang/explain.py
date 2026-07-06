@@ -30,6 +30,14 @@ def _plural(v, word: str) -> str:
 
 
 def _condition_text(cond: dict) -> str:
+    text = _condition_text_inner(cond)
+    tf = cond.get("timeframe")
+    if tf:
+        text += f", judged on closed {tf} bars"
+    return text
+
+
+def _condition_text_inner(cond: dict) -> str:
     name = cond["condition"]
     p = cond.get("params", {}) or {}
 

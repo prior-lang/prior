@@ -28,6 +28,20 @@ def _n(v) -> float:
 
 
 def _condition_to_term(cond: dict):
+    term = _condition_to_term_inner(cond)
+    tf = cond.get("timeframe")
+    if tf:
+        if isinstance(term, Predicate):
+            term.tag.timeframe = tf
+        else:
+            for side in (term.right, term.left):
+                if isinstance(side, TagNode):
+                    side.timeframe = tf
+                    break
+    return term
+
+
+def _condition_to_term_inner(cond: dict):
     name = cond["condition"]
     p = cond.get("params", {}) or {}
 

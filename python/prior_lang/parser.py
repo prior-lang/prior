@@ -18,7 +18,7 @@ from .errors import PriorError
 from .lexer import LogicalLine, Token, tokenize
 from .tags import DOLLAR, MULT, NUMBER, PERCENT, TAGS, WORD, TagSpec
 
-VERSION = "0.4"
+VERSION = "0.5"
 
 _BOLLINGER = {"lower_bollinger": "lower", "middle_bollinger": "middle", "upper_bollinger": "upper"}
 _PREDICATE_MAP = {
@@ -47,6 +47,7 @@ class TagNode:
     params: dict                   # resolved params (defaults filled)
     pos_raw: list = field(default_factory=list)    # surface positional (kind, value)
     named_raw: dict = field(default_factory=dict)  # surface named name → (kind, value)
+    timeframe: str | None = None   # 'on 4h' suffix — condition judged on that TF
     line: int = 0
     col: int = 0
 
@@ -222,7 +223,31 @@ def _operand_desc(op) -> str:
     return str(op)
 
 
+def _term_timeframe(term) -> str | None:
+    """The 'on TF' of a term, from whichever tag carries it; conflict is an error."""
+    tags = []
+    if isinstance(term, Predicate):
+        tags = [term.tag]
+    elif isinstance(term, Comparison):
+        tags = [x for x in (term.left, term.right) if isinstance(x, TagNode)]
+    tfs = {t.timeframe for t in tags if t.timeframe is not None}
+    if len(tfs) > 1:
+        raise PriorError(
+            "both sides of a comparison must live on the same timeframe",
+            line=getattr(term, "line", 0),
+        )
+    return tfs.pop() if tfs else None
+
+
 def _desugar(term) -> dict:
+    tf = _term_timeframe(term)
+    cond = _desugar_inner(term)
+    if tf is not None:
+        cond["timeframe"] = tf
+    return cond
+
+
+def _desugar_inner(term) -> dict:
     if isinstance(term, Predicate):
         tag = term.tag
         name = _PREDICATE_MAP.get(tag.name)
@@ -504,11 +529,24 @@ def _parse_tag(cur: _Cursor) -> TagNode:
 
     pos_raw: list = []
     named_raw: dict = {}
+    tag_timeframe: str | None = None
     while True:
         tok = cur.peek()
         if tok is None:
             cur.err("unclosed '[' — missing ']'", tok=name_tok)
         if tok.kind == "rbrack":
+            cur.next()
+            break
+        if tok.kind == "word" and tok.value == "on":
+            cur.next()
+            tf_tok = cur.peek()
+            if tf_tok is None or tf_tok.kind != "timeframe":
+                cur.err("'on' takes a timeframe: [rsi on 4h]", tok=tok)
+            cur.next()
+            tag_timeframe = tf_tok.value
+            close = cur.peek()
+            if close is None or close.kind != "rbrack":
+                cur.err("'on 4h' goes last inside the tag: [sma 200 on 1d]", tok=tf_tok)
             cur.next()
             break
         if tok.kind in ("word", "keyword"):
@@ -554,12 +592,16 @@ def _parse_tag(cur: _Cursor) -> TagNode:
         else:
             cur.err(f"[{name}] takes a percent or an ATR multiple", tok=name_tok,
                     suggestion=f"e.g. [{name} 1.5%] or [{name} 2 atr]")
+        if tag_timeframe is not None:
+            cur.err(f"'on {tag_timeframe}' only applies to condition tags", tok=name_tok)
         return TagNode(name, params, pos_raw=pos_raw, named_raw=named_raw,
                        line=name_tok.line, col=name_tok.col)
 
     params = _resolve_params(cur, name_tok, spec, pos_raw, named_raw)
+    if tag_timeframe is not None and spec.kind != "condition":
+        cur.err(f"'on {tag_timeframe}' only applies to condition tags", tok=name_tok)
     return TagNode(name, params, pos_raw=pos_raw, named_raw=named_raw,
-                   line=name_tok.line, col=name_tok.col)
+                   timeframe=tag_timeframe, line=name_tok.line, col=name_tok.col)
 
 
 def _expect_rbrack(cur: _Cursor):
@@ -909,6 +951,30 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
     return prog
 
 
+def _tf_minutes(tf: str) -> int:
+    n = int(tf[:-1])
+    unit = tf[-1]
+    return n * {"m": 1, "h": 60, "d": 1440, "w": 10080}[unit]
+
+
+def _check_condition_timeframes(prog: Program, conditions: list) -> None:
+    base = prog.timeframe or "1d"
+    for c in conditions:
+        tf = c.get("timeframe")
+        if tf is None:
+            continue
+        if _tf_minutes(tf) == _tf_minutes(base):
+            raise PriorError(
+                f"'on {tf}' matches the strategy timeframe — drop it"
+            )
+        if _tf_minutes(tf) < _tf_minutes(base):
+            raise PriorError(
+                f"'on {tf}' is finer than the strategy timeframe ({base}) — "
+                "a coarser strategy cannot see intrabar data; 'on' is for "
+                "higher-timeframe context (e.g. a daily regime gate on an hourly strategy)"
+            )
+
+
 def _validate(prog: Program):
     if prog.rank_select is not None:
         if prog.entry_terms or prog.exit_terms or prog.sizing is not None:
@@ -919,7 +985,9 @@ def _validate(prog: Program):
         if prog.universe_tag is None and not prog.universe_tickers:
             raise PriorError("ranking strategies need a universe — add: universe [sp_top_30]")
         for t in prog.rank_where_terms:
-            _desugar(t)
+            c = _desugar(t)
+            if c.get("timeframe"):
+                raise PriorError("'on <timeframe>' inside hold where-filters is coming later")
         return
     if prog.rebalance is not None:
         raise PriorError("rebalance only applies to ranking strategies — add: hold top N by [metric]")
@@ -963,8 +1031,6 @@ def _validate(prog: Program):
             )
 
     # Desugar everything once so condition-level errors surface at compile time
-    for t in prog.entry_terms:
-        _desugar(t)
-    for t in prog.exit_terms:
-        if not isinstance(t, TagNode):
-            _desugar(t)
+    entry_conds = [_desugar(t) for t in prog.entry_terms]
+    exit_conds = [_desugar(t) for t in prog.exit_terms if not isinstance(t, TagNode)]
+    _check_condition_timeframes(prog, entry_conds + exit_conds)

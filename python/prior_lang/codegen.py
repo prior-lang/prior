@@ -365,6 +365,84 @@ def _condition_blocks(
     return "\n\n".join(blocks), combined_expr
 
 
+
+
+def _tf_freq(tf: str) -> str:
+    """PRIOR timeframe token → pandas resample rule. Weeks end Friday."""
+    n = int(tf[:-1])
+    unit = tf[-1]
+    return {"m": f"{n}min", "h": f"{n}h", "d": f"{n}D", "w": f"{n}W-FRI"}[unit]
+
+
+def _split_condition_blocks(
+    conditions: List[Dict[str, Any]], match_logic: str, var_prefix: str = "cond"
+) -> tuple[str, str, str, list]:
+    """Like _condition_blocks, but conditions carrying a 'timeframe' are
+    emitted as module-level helpers evaluated on a resampled frame of
+    CLOSED higher-TF bars, then forward-filled onto the strategy index —
+    the no-repaint contract (see prior spec §6).
+
+    Returns (module_helpers_src, inline_body, combined_expr, tf_tokens).
+    """
+    op = "&" if match_logic == "all" else "|"
+    identity = "True" if match_logic == "all" else "False"
+
+    helpers: List[str] = []
+    blocks: List[str] = []
+    combine_names: List[str] = []
+    tfs: List[str] = []
+    for i, cond in enumerate(conditions):
+        name = f"{var_prefix}_{i}"
+        tf = cond.get("timeframe")
+        if tf:
+            if tf not in tfs:
+                tfs.append(tf)
+            snippet = _hcode(cond)
+            helpers.append(
+                f"def _prior_htf_{name}(df):\n"
+                f'    close = df["close"]\n'
+                f"    {snippet}\n"
+                f"    return cond\n"
+                f"\n"
+                f"\n"
+            )
+            blocks.append(
+                f"    # {var_prefix} {i + 1}: {cond['type']} on {tf} (closed bars, no repaint)\n"
+                f'    {name} = _prior_htf_{name}(htf_{tf}).reindex(df.index, method="ffill").fillna(False).astype(bool)'
+            )
+        else:
+            snippet = _hcode(cond)
+            snippet = snippet.replace("cond =", f"{name} =")
+            blocks.append(f"    # {var_prefix} {i + 1}: {cond['type']}\n    {snippet}")
+        combine_names.append(name)
+
+    combined_expr = f" {op} ".join(combine_names) if combine_names else identity
+    return "".join(helpers), "\n\n".join(blocks), combined_expr, tfs
+
+
+def _htf_preamble(tfs: list) -> str:
+    """Emit the closed-bar resample frames for every timeframe in use."""
+    if not tfs:
+        return ""
+    lines = [
+        "",
+        "    if not isinstance(df.index, pd.DatetimeIndex):",
+        '        raise ValueError("multi-timeframe strategies need datetime-indexed bars")',
+    ]
+    for tf in tfs:
+        freq = _tf_freq(tf)
+        lines.append(f"    htf_{tf} = pd.DataFrame({{")
+        for col, agg in (
+            ("open", "first()"), ("high", "max()"), ("low", "min()"),
+            ("close", "last()"), ("volume", "sum()"),
+        ):
+            lines.append(
+                f'        "{col}": df["{col}"].resample("{freq}", label="right", closed="right").{agg},'
+            )
+        lines.append(f'    }}).dropna(subset=["close"])')
+    return "\n".join(lines) + "\n"
+
+
 def generate_strategy_code(
     conditions: List[Dict[str, Any]],
     match_logic: str = "all",
@@ -408,7 +486,7 @@ def generate_strategy_code(
         if pct_v is not None and atr_v is not None:
             raise ValueError(f"{label}: give a percent or an ATR multiple, not both")
 
-    entry_body, entry_expr = _condition_blocks(conditions, match_logic, "cond")
+    entry_helpers, entry_body, entry_expr, entry_tfs = _split_condition_blocks(conditions, match_logic, "cond")
     hold = int(max(1, hold_bars))
     is_short = direction == "short"
 
@@ -435,12 +513,13 @@ def generate_strategy_code(
         )
         if is_short:
             signals_expr = "(%s * -1)" % signals_expr
-        return f'''{metadata}def generate_signals(df):
+        htf = _htf_preamble(entry_tfs)
+        return f'''{metadata}{entry_helpers}def generate_signals(df):
     """Auto-generated strategy. Mirrors {len(conditions)} condition(s)
     combined with {match_logic.upper()}. Enters on the rising edge of the
     combined match and {hold_phrase}."""
     close = df["close"]
-
+{htf}
 {entry_body}
 
     combined = ({entry_expr}).fillna(False)
@@ -451,8 +530,10 @@ def generate_strategy_code(
 
     exit_body = ""
     exit_expr = "False"
+    exit_helpers = ""
+    exit_tfs: list = []
     if has_cond_exits:
-        exit_body, exit_expr = _condition_blocks(exit_conditions, "any", "xcond")
+        exit_helpers, exit_body, exit_expr, exit_tfs = _split_condition_blocks(exit_conditions, "any", "xcond")
         exit_body = "\n" + exit_body + "\n"
         exit_series = f"    exit_cond = ({exit_expr}).fillna(False)\n"
     else:
@@ -561,13 +642,15 @@ def generate_strategy_code(
         chain_lines.append("            exit_now = True")
     exit_chain = "\n".join(chain_lines)
 
-    return f'''{metadata}def generate_signals(df):
+    all_tfs = entry_tfs + [t for t in exit_tfs if t not in entry_tfs]
+    htf = _htf_preamble(all_tfs)
+    return f'''{metadata}{entry_helpers}{exit_helpers}def generate_signals(df):
     """Auto-generated strategy. Mirrors {len(conditions)} entry
     condition(s) combined with {match_logic.upper()}. {enter_phrase};
     exits on first of: {exit_desc}. Bar-close evaluation; exit precedence
     stop -> breakeven -> target -> trailing -> conditions -> time."""
     close = df["close"]
-
+{htf}
 {entry_body}
 
     combined = ({entry_expr}).fillna(False)
@@ -869,12 +952,17 @@ def compile_strategy(strategy: Dict[str, Any]) -> str:
     entry = strategy["entry"]
     exit_rule = strategy.get("exit", {}) or {}
     return generate_strategy_code(
-        conditions=[{"type": c["condition"], "params": c.get("params", {})} for c in entry["conditions"]],
+        conditions=[
+            {"type": c["condition"], "params": c.get("params", {}),
+             **({"timeframe": c["timeframe"]} if c.get("timeframe") else {})}
+            for c in entry["conditions"]
+        ],
         match_logic=entry.get("match_logic", "all"),
         direction=strategy.get("direction", "long"),
         hold_bars=exit_rule.get("hold_bars") or DEFAULT_HOLD_BARS,
         exit_conditions=[
-            {"type": c["condition"], "params": c.get("params", {})}
+            {"type": c["condition"], "params": c.get("params", {}),
+             **({"timeframe": c["timeframe"]} if c.get("timeframe") else {})}
             for c in (exit_rule.get("conditions") or [])
         ] or None,
         stop_loss_pct=exit_rule.get("stop_loss_pct"),

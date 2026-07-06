@@ -1,8 +1,10 @@
-# PRIOR Tag Reference — v0.4 (draft)
+# PRIOR Tag Reference — v0.5 (draft)
 
 Every tag in the language, its parameters, defaults, exact semantics, and what it compiles to. This file is the source of truth for the compiler's tag registry, the editor's autocomplete, and the `prior explain` readback strings.
 
 Tags come in five kinds (see `SPEC.md` §5): **condition**, **sizing**, **exit**, **risk**, **universe**. Condition tags subdivide by usage into **predicate tags** (complete conditions, used bare: `when [macd_cross_up]`) and **operand tags** (values compared with `at` / `above` / `below` / `crosses` / `<` / `>`: `when price at [lower_bollinger]`, `when [rsi] < 30`).
+
+Any condition tag accepts an `on <timeframe>` suffix (`[rsi on 4h]`, `[sma 200 on 1d]`): the condition is judged on that timeframe's closed bars and forward-filled — see SPEC §4 for the no-repaint contract.
 
 Registry targets refer to the AutoQuant scanner condition registry (`engine/scanner/conditions.py`), which is the single implementation shared by StratScanner and PRIOR. Tags never fork registry semantics.
 

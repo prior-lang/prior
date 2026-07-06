@@ -39,6 +39,8 @@ def _tag(tag: TagNode) -> str:
         parts.append(_value(kind, v))
     for key, (kind, v) in tag.named_raw.items():
         parts.append(f"{key}={_value(kind, v)}")
+    if tag.timeframe:
+        parts.append(f"on {tag.timeframe}")
     return "[" + " ".join(parts) + "]"
 
 
