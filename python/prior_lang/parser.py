@@ -83,7 +83,8 @@ class Program:
     rules: list = field(default_factory=list)   # [{logic, terms, sizing}] when >1 entry rule
     direction: str = "long"          # long (buy/sell) | short (short/cover)
     sizing: TagNode | None = None
-    partial_terms: list = field(default_factory=list)   # sell half when ...
+    partial_terms: list = field(default_factory=list)         # sell half when ...
+    partial_short_terms: list = field(default_factory=list)   # cover half when ...
     exit_terms: list = field(default_factory=list)   # sell rule (longs)
     exit_short_terms: list = field(default_factory=list)  # cover rule (shorts)
     risk_tags: list[TagNode] = field(default_factory=list)
@@ -279,25 +280,30 @@ class Program:
             }
             del out["exit"]
         if self.partial_terms:
-            p_conditions = []
-            p_target = p_hold = None
-            for t in self.partial_terms:
-                if isinstance(t, TagNode):
-                    if t.name == "target":
-                        p_target = t.params["value"]
-                    elif t.name == "after":
-                        p_hold = int(t.params["bars"])
-                else:
-                    p_conditions.append(_desugar(t))
-            out["partial_exit"] = {
-                "fraction": 0.5,
-                "conditions": p_conditions,
-                "profit_target_pct": p_target,
-                "hold_bars": p_hold,
-            }
+            out["partial_exit"] = self._partial_json(self.partial_terms)
+        if self.partial_short_terms:
+            out["partial_exit_short"] = self._partial_json(self.partial_short_terms)
         if risk:
             out["risk"] = risk
         return out
+
+    def _partial_json(self, terms: list) -> dict:
+        p_conditions = []
+        p_target = p_hold = None
+        for t in terms:
+            if isinstance(t, TagNode):
+                if t.name == "target":
+                    p_target = t.params["value"]
+                elif t.name == "after":
+                    p_hold = int(t.params["bars"])
+            else:
+                p_conditions.append(_desugar(t))
+        return {
+            "fraction": 0.5,
+            "conditions": p_conditions,
+            "profit_target_pct": p_target,
+            "hold_bars": p_hold,
+        }
 
     def _exit_json(self, terms: list) -> dict:
         conditions = []
@@ -1060,8 +1066,9 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
             if tok is not None and tok.kind == "word" and tok.value == "half":
                 cur.next()
                 is_partial = True
-                if "partial" in seen:
-                    cur.err("only one partial exit (sell half) per strategy for now", tok=head)
+                slot = f"partial_{kw}"
+                if slot in seen:
+                    cur.err(f"only one {kw} half rule per strategy", tok=head)
             else:
                 prog.exit_keyword = kw
             tok = cur.peek()
@@ -1084,8 +1091,11 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
                 for t in terms:
                     if isinstance(t, TagNode) and t.name in ("stop", "trailing", "breakeven"):
                         cur.err(f"[{t.name}] belongs to the full exit — partial exits take targets, conditions, or [after N bars]", tok=head)
-                prog.partial_terms = terms
-                seen.add("partial")
+                if kw == "cover":
+                    prog.partial_short_terms = terms
+                else:
+                    prog.partial_terms = terms
+                seen.add(slot)
             else:
                 if kw in seen:
                     cur.err(f"more than one {kw} rule", tok=head)
@@ -1313,22 +1323,27 @@ def _validate(prog: Program):
             raise PriorError("a strategy with long rules needs a sell rule")
         if not prog.exit_short_terms:
             raise PriorError("a strategy with short rules needs a cover rule")
-        if prog.partial_terms:
-            raise PriorError("partial exits in long+short strategies are coming later")
+        if prog.partial_short_terms and not any(r.get("direction") == "short" for r in prog.rules):
+            raise PriorError("cover half manages shorts — this strategy has no short rules")
     elif prog.direction == "long":
         if prog.exit_short_terms:
             raise PriorError("long strategies exit with sell — cover closes a short")
+        if prog.partial_short_terms:
+            raise PriorError("cover half manages shorts — long strategies take half off with sell half")
     elif prog.direction == "short":
         if prog.exit_terms:
             raise PriorError("short strategies exit with cover — sell closes a long")
         # downstream (JSON, codegen, formatter) treat the single exit uniformly
         prog.exit_terms = prog.exit_short_terms
         prog.exit_short_terms = []
+        if prog.partial_short_terms:
+            prog.partial_terms = prog.partial_short_terms
+            prog.partial_short_terms = []
 
     # Inline ticker scoping vs universe statement
     tickers = set()
     rule_terms = [t for r in prog.rules for t in r["terms"]] if prog.rules else list(prog.entry_terms)
-    for t in rule_terms + prog.exit_terms + prog.exit_short_terms + prog.partial_terms:
+    for t in rule_terms + prog.exit_terms + prog.exit_short_terms + prog.partial_terms + prog.partial_short_terms:
         if isinstance(t, Comparison) and isinstance(t.left, tuple) and t.left[0] == "ticker":
             tickers.add(t.left[1])
     if len(tickers) > 1:
@@ -1362,5 +1377,5 @@ def _validate(prog: Program):
     all_entry_terms = [t for r in (prog.rules or [{"terms": prog.entry_terms}]) for t in r["terms"]]
     entry_conds = [_desugar(t) for t in all_entry_terms]
     exit_conds = [_desugar(t) for t in prog.exit_terms + prog.exit_short_terms if not isinstance(t, TagNode)]
-    partial_conds = [_desugar(t) for t in prog.partial_terms if not isinstance(t, TagNode)]
+    partial_conds = [_desugar(t) for t in prog.partial_terms + prog.partial_short_terms if not isinstance(t, TagNode)]
     _check_condition_timeframes(prog, entry_conds + exit_conds + partial_conds)

@@ -352,9 +352,22 @@ def strategy_to_source(strategy: dict) -> str:
             terms.append(_tag("after", [("number", _n(ex["hold_bars"])), ("word", "bars")]))
         return terms
 
+    def _partial_terms_from_spec(p):
+        terms: list = [_condition_to_term(c) for c in p.get("conditions") or []]
+        if p.get("profit_target_pct") is not None:
+            terms.append(_tag("target", [("percent", _n(p["profit_target_pct"]))],
+                               params={"value": _n(p["profit_target_pct"]), "unit": "pct"}))
+        if p.get("hold_bars") is not None:
+            terms.append(_tag("after", [("number", _n(p["hold_bars"])), ("word", "bars")]))
+        return terms
+
     if strategy.get("exits"):
         prog.exit_terms = _exit_terms_from_spec(strategy["exits"]["long"])
         prog.exit_short_terms = _exit_terms_from_spec(strategy["exits"]["short"])
+        if strategy.get("partial_exit"):
+            prog.partial_terms = _partial_terms_from_spec(strategy["partial_exit"])
+        if strategy.get("partial_exit_short"):
+            prog.partial_short_terms = _partial_terms_from_spec(strategy["partial_exit_short"])
         risk = strategy.get("risk") or {}
         if "max_positions" in risk:
             prog.risk_tags.append(_tag("max_positions", [("number", _n(risk["max_positions"]))]))

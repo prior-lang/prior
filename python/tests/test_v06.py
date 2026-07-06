@@ -197,14 +197,31 @@ def test_mixed_roundtrip_fixed_point():
     assert "short [5% portfolio]" in out and "cover when" in out
 
 
-def test_mixed_partial_rejected():
-    with pytest.raises(prior_lang.PriorError, match="coming later"):
+def test_mixed_partials_per_direction():
+    src = (
+        "universe $T\n"
+        "when price above 100\n  buy [10% portfolio]\n"
+        "when price below 90\n  short [10% portfolio]\n"
+        "sell half when [target 3%]\n"
+        "cover half when [target 3%]\n"
+        "sell when [after 4 bars]\ncover when [after 4 bars]\n"
+    )
+    s = prior_lang.compile_source(src)
+    assert s["partial_exit"]["profit_target_pct"] == 3.0
+    assert s["partial_exit_short"]["profit_target_pct"] == 3.0
+    assert prior_lang.compile_source(strategy_to_source(s)) == s
+    # Long enters 103, half at +3% (107), time exit; short enters 89,
+    # half at -3% (84), time exit — verified bar by bar.
+    closes = [99, 103, 104, 107, 108, 106, 89, 88, 84, 83, 82, 81]
+    sig = list(_run(src, closes))
+    assert sig[:11] == [0.0, 1.0, 1.0, 0.5, 0.5, 0.0, -1.0, -1.0, -0.5, -0.5, 0.0]
+
+
+def test_cover_half_needs_short_rules():
+    with pytest.raises(prior_lang.PriorError, match="no short rules|manages shorts"):
         prior_lang.compile_source(
-            "universe [mega_tech]\n"
-            "when [rsi 2] < 10\n  buy [5% portfolio]\n"
-            "when [rsi 2] > 90\n  short [5% portfolio]\n"
-            "sell half when [target 5%]\n"
-            "sell when [after 5 bars]\ncover when [after 5 bars]\n"
+            "universe $T\nwhen price above 100\n  buy [10% portfolio]\n"
+            "cover half when [target 3%]\nsell when [after 5 bars]\n"
         )
 
 

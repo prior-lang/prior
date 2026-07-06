@@ -876,6 +876,8 @@ def generate_mixed_code(
     exit_short: Dict[str, Any],
     cooldown_bars: int = 0,
     reverse: bool = False,
+    partial_long: Dict[str, Any] | None = None,
+    partial_short: Dict[str, Any] | None = None,
     position_sizing: Dict[str, Any] | None = None,
     risk: Dict[str, Any] | None = None,
 ) -> str:
@@ -984,6 +986,63 @@ def generate_mixed_code(
             "                be_armed = True"
         )
 
+    # ── Per-direction partial exits (sell half / cover half) ──────
+    any_partial = bool(partial_long) or bool(partial_short)
+
+    def _partial_pieces(spec, prefix, is_short_dir):
+        nonlocal all_helpers
+        if not spec:
+            return "", "", "False"
+        conds = spec.get("conditions") or []
+        body = ""
+        series = ""
+        arr = f"{prefix}_arr"
+        checks = []
+        t = spec.get("profit_target_pct")
+        if t is not None:
+            if is_short_dir:
+                checks.append(f"px <= entry_px * (1 - {float(t)} / 100.0)")
+            else:
+                checks.append(f"px >= entry_px * (1 + {float(t)} / 100.0)")
+        if conds:
+            cdicts = [{"type": c["condition"], "params": c.get("params", {}),
+                       **({"timeframe": c["timeframe"]} if c.get("timeframe") else {})}
+                      for c in conds]
+            helpers, cbody, cexpr, ctfs = _split_condition_blocks(cdicts, "any", prefix)
+            all_helpers += helpers
+            for tf in ctfs:
+                if tf not in tfs:
+                    tfs.append(tf)
+            body = "\n" + cbody + "\n"
+            series = f"    {prefix}_cond = ({cexpr}).fillna(False)\n    {arr} = {prefix}_cond.to_numpy()\n"
+            checks.append(f"{arr}[i]")
+        h = spec.get("hold_bars")
+        if h is not None:
+            checks.append(f"bars_held >= {int(h)}")
+        return body, series, (" or ".join(checks) if checks else "False")
+
+    pl_body, pl_series, pl_expr = _partial_pieces(partial_long, "plcond", False)
+    ps_body, ps_series, ps_expr = _partial_pieces(partial_short, "pscond", True)
+
+    frac_dtype = "float" if any_partial else "int"
+    frac_init = "\n    frac = 0.0\n    partial_done = False" if any_partial else ""
+    frac_reset = "\n                frac = 1.0\n                partial_done = False" if any_partial else ""
+    frac_flip_reset = "\n            frac = 1.0\n            partial_done = False" if any_partial else ""
+    sig_enter = "                sig[i] = dir * frac" if any_partial else "                sig[i] = dir"
+    sig_hold = "            sig[i] = dir * frac" if any_partial else "            sig[i] = dir"
+    sig_flip = "\n            sig[i] = dir * frac" if any_partial else "\n            sig[i] = dir"
+    partial_chain = ""
+    if any_partial:
+        partial_chain = (
+            "        if not exit_now and not partial_done:\n"
+            f"            if dir > 0 and ({pl_expr}):\n"
+            "                frac = 0.5\n"
+            "                partial_done = True\n"
+            f"            elif dir < 0 and ({ps_expr}):\n"
+            "                frac = 0.5\n"
+            "                partial_done = True\n"
+        )
+
     reverse_block = ""
     if reverse:
         reverse_block = (
@@ -992,15 +1051,13 @@ def generate_mixed_code(
             "\n            dir = -1"
             "\n            entry_px = px"
             "\n            hwm = px"
-            "\n            bars_held = 0" + entry_atr_line.replace("                ", "            ") + be_reset.replace("                ", "            ") +
-            "\n            sig[i] = dir"
+            "\n            bars_held = 0" + entry_atr_line.replace("                ", "            ") + be_reset.replace("                ", "            ") + frac_flip_reset + sig_flip +
             "\n            continue"
             "\n        if dir < 0 and bool(long_arr[i]) and not bool(short_arr[i]):"
             "\n            dir = 1"
             "\n            entry_px = px"
             "\n            hwm = px"
-            "\n            bars_held = 0" + entry_atr_line.replace("                ", "            ") + be_reset.replace("                ", "            ") +
-            "\n            sig[i] = dir"
+            "\n            bars_held = 0" + entry_atr_line.replace("                ", "            ") + be_reset.replace("                ", "            ") + frac_flip_reset + sig_flip +
             "\n            continue"
         )
 
@@ -1031,19 +1088,19 @@ def generate_mixed_code(
 {short_body}
 {lx_body}
 {lx_series}{sx_body}
-{sx_series}{atr_block}
+{sx_series}{pl_body}{pl_series}{ps_body}{ps_series}{atr_block}
     long_arr = long_entries.to_numpy()
     short_arr = short_entries.to_numpy()
     exit_long_arr = exit_long_cond.to_numpy()
     exit_short_arr = exit_short_cond.to_numpy()
     close_arr = close.to_numpy()
     n = len(df)
-    sig = np.zeros(n, dtype=int)
+    sig = np.zeros(n, dtype={frac_dtype})
     in_pos = False
     dir = 0
     entry_px = 0.0
     hwm = 0.0
-    bars_held = 0{atr_init}{be_init}{cd_init}
+    bars_held = 0{atr_init}{be_init}{cd_init}{frac_init}
     for i in range(n):
         if not in_pos:
 {cd_gate}            le = bool(long_arr[i])
@@ -1055,8 +1112,8 @@ def generate_mixed_code(
                 dir = 1 if le else -1
                 entry_px = close_arr[i]
                 hwm = close_arr[i]
-                bars_held = 0{entry_atr_line}{be_reset}
-                sig[i] = dir
+                bars_held = 0{entry_atr_line}{be_reset}{frac_reset}
+{sig_enter}
             continue
         bars_held += 1
         px = close_arr[i]{reverse_block}
@@ -1071,11 +1128,11 @@ def generate_mixed_code(
 {long_chain}
         else:
 {short_chain}
-        if exit_now:
+{partial_chain}        if exit_now:
             in_pos = False
             sig[i] = 0{cd_set}
         else:
-            sig[i] = dir
+{sig_hold}
     return pd.Series(sig, index=df.index)
 '''
 
@@ -1566,6 +1623,8 @@ def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False) -> str
             exit_short=ex_s,
             cooldown_bars=(strategy.get("risk") or {}).get("cooldown_bars", 0),
             reverse=bool((strategy.get("risk") or {}).get("reverse")),
+            partial_long=strategy.get("partial_exit"),
+            partial_short=strategy.get("partial_exit_short"),
             position_sizing=strategy.get("position_sizing"),
             risk=strategy.get("risk"),
         )

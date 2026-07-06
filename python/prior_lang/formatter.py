@@ -137,8 +137,14 @@ def format_program(prog: Program) -> str:
 
     exit_kw = "cover" if prog.direction == "short" else "sell"
     if prog.partial_terms:
-        p_lines = [f"{exit_kw} half when {_term(prog.partial_terms[0])}"]
+        kw = "sell" if prog.direction == "mixed" else exit_kw
+        p_lines = [f"{kw} half when {_term(prog.partial_terms[0])}"]
         for t in prog.partial_terms[1:]:
+            p_lines.append(f"  or {_term(t)}")
+        blocks.append("\n".join(p_lines))
+    if prog.partial_short_terms:
+        p_lines = [f"cover half when {_term(prog.partial_short_terms[0])}"]
+        for t in prog.partial_short_terms[1:]:
             p_lines.append(f"  or {_term(t)}")
         blocks.append("\n".join(p_lines))
     if prog.exit_terms:
