@@ -9,12 +9,16 @@ Public API: parse_source (→ Program), compile_source (→ JSON dict),
 format_source (→ canonical text), PriorError.
 """
 
+from .decompile import strategy_to_source
 from .errors import PriorError
 from .formatter import format_program
 from .parser import Program, parse_source
 
 __version__ = "0.1.0"
-__all__ = ["PriorError", "Program", "parse_source", "compile_source", "format_source", "__version__"]
+__all__ = [
+    "PriorError", "Program", "parse_source", "compile_source",
+    "format_source", "strategy_to_source", "__version__",
+]
 
 
 def compile_source(source: str, filename: str = "<string>") -> dict:
