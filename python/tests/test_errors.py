@@ -134,12 +134,22 @@ def test_direction_exit_keyword_pairing():
     assert "sell" in e.message
 
 
-def test_second_entry_rule_rejected():
+def test_multiple_entry_rules_compile():
+    s = prior_lang.compile_source(
+        "universe [sp_top_30]\nwhen [macd_cross_up]\n  buy [5% portfolio]\n"
+        "when [rsi] < 30\n  buy [$5000]\nsell when [after 5 bars]"
+    )
+    assert len(s["rules"]) == 2
+    assert s["rules"][0]["position_sizing"]["method"] == "percent_of_portfolio"
+    assert s["rules"][1]["position_sizing"]["method"] == "fixed_dollar"
+
+
+def test_mixed_direction_rules_rejected():
     e = _err(
         "universe [sp_top_30]\nwhen [macd_cross_up]\n  buy [5% portfolio]\n"
-        "when [rsi] < 30\n  buy [5% portfolio]\nsell when [after 5 bars]"
+        "when [rsi] > 80\n  short [5% portfolio]\nsell when [after 5 bars]"
     )
-    assert "more than one" in e.message
+    assert "later version" in e.message
 
 
 def test_error_carries_line_number():

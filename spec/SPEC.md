@@ -1,8 +1,8 @@
-# PRIOR Language Specification — v0.5 (draft)
+# PRIOR Language Specification — v0.6 (draft)
 
 **PRIOR** — Portable Rules for Indicators, Orders & Risk. A declarative language for expressing trading strategies as testable hypotheses. This spec is the source of truth for the parser, formatter, and compiler. Pre-1.0, breakable with notice.
 
-Status: draft. v0.5 (2026-07-06) adds multi-timeframe conditions (on <tf> inside condition tags, closed-bar no-repaint semantics). v0.4 (2026-07-06) adds ranking strategies (hold top N by [metric], rebalance calendars, where-filters, weighting). v0.3 (2026-07-06) adds the vocabulary sweep (new highs/lows, gaps, streaks, price levels, ADX, stochastic, VWAP, squeeze, OBV) and richer exits (ATR-unit stops/targets, chandelier trailing, breakeven). v0.2 (2026-07-06) added short strategies. v0.1 drafted 2026-07-05. Companion documents: `TAGS.md` (tag reference), `../examples/*.prior` (the executable spec — every example must parse, format canonically, and compile).
+Status: draft. v0.6 (2026-07-06) adds rule plurality: multiple entry rules per strategy (same direction), partial exits (sell half when), and cooldown (risk [cooldown N]). v0.5 (2026-07-06) adds multi-timeframe conditions (on <tf> inside condition tags, closed-bar no-repaint semantics). v0.4 (2026-07-06) adds ranking strategies (hold top N by [metric], rebalance calendars, where-filters, weighting). v0.3 (2026-07-06) adds the vocabulary sweep (new highs/lows, gaps, streaks, price levels, ADX, stochastic, VWAP, squeeze, OBV) and richer exits (ATR-unit stops/targets, chandelier trailing, breakeven). v0.2 (2026-07-06) added short strategies. v0.1 drafted 2026-07-05. Companion documents: `TAGS.md` (tag reference), `../examples/*.prior` (the executable spec — every example must parse, format canonically, and compile).
 
 ---
 
@@ -62,7 +62,7 @@ timeframe_stmt = "timeframe" , TIMEFRAME ;
 entry_stmt     = ( "when" | "if" ) , expr , action ;
 action         = ( "buy" | "short" ) , tag ;        (* sizing tag, required *)
 
-exit_stmt      = ( "sell" | "cover" ) , [ "when" ] , expr ;
+exit_stmt      = ( "sell" | "cover" ) , [ "half" ] , [ "when" ] , expr ;
 
 risk_stmt      = "risk" , tag , { tag } ;
 
@@ -99,7 +99,7 @@ The grammar is deliberately permissive; **kind checking** (section 5) rejects no
 
 ## 4. Statements
 
-A v0.1 program has at most one of each: `strategy`, `universe`, `timeframe`, entry (`when`), exit (`sell`), `risk`. A second entry or exit statement is a compile error ("multiple entry rules are coming in v1.1"). Statement order is free; `prior fmt` canonicalizes to the order above.
+A program has at most one of each: `strategy`, `universe`, `timeframe`, exit (`sell`/`cover`), partial exit (`sell half`), `risk` — and any number of entry rules (`when`, since v0.6). Statement order is free; `prior fmt` canonicalizes to the order above.
 
 | Statement | Required | Default when omitted |
 |---|---|---|
@@ -148,6 +148,7 @@ Cross-statement checks:
 
 ## 6. Evaluation semantics
 
+- **Rule plurality (v0.6).** A strategy may have several entry rules (`when … buy [sizing]` blocks, each with its own logic and sizing). Any rule's rising edge opens the position; one position at a time per ticker; long and short rules cannot yet coexist in one file. `sell half when …` (at most one) takes half off ONCE per position — its triggers are targets, conditions, or `[after N bars]`, never stops — and is checked after the full-exit chain. `risk [cooldown N]` blocks re-entry for N bars after any exit. Signals become fractional (±0.5) once a partial fires.
 - **Multi-timeframe conditions.** A condition tag may carry `on <tf>` where `<tf>` is COARSER than the strategy timeframe (finer or equal is a compile error). The whole condition is judged on that timeframe's **closed** bars — the strategy's bars are resampled (weeks end Friday), the condition evaluates there, and its verdict forward-fills onto the strategy's bars. A higher-TF bar's verdict is visible only from its close onward: **the gate cannot repaint**, structurally. Both sides of a comparison must share one timeframe. Multi-timeframe strategies require datetime-indexed bars (a clear runtime error otherwise). Mixing frames inside one comparison (strategy-TF price against a higher-TF level) and `on` inside `hold` where-filters are future extensions.
 - **Ranking strategies** (`hold`) are a third form, mutually exclusive with rules (`when`/`sell`): `hold` IS the entry, the exit, and the sizing. On each rebalance close (daily / weekly = last trading day of ISO week / monthly = last trading day of month, default monthly), eligible tickers (metric non-NaN, `where` conditions true) are ranked; ties break alphabetically; the top/bottom N are held equally weighted or `weighted by` a metric, capped by `risk [max_position N%]` (excess redistributes pro-rata once, remainder is cash); fewer qualifiers than N leaves the shortfall in cash; weights hold between rebalances. **Universes are today's constituents — long ranking backtests inherit survivorship bias.** Point-in-time constituents are a hosted-data concern.
 - **Direction.** A strategy is long (`buy` … `sell`) or short (`short` … `cover`), one direction per strategy in v0.2; the pairing is enforced (`buy` with `cover` is a compile error that teaches the vocabulary). Short signals are 0/-1. Exit tags are direction-relative: a short's `[stop]` sits above entry, its `[target]` below, and `[trailing]` trails the low-water mark. Condition tags are direction-neutral predicates and never change meaning.

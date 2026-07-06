@@ -1,4 +1,4 @@
-# PRIOR Tag Reference — v0.5 (draft)
+# PRIOR Tag Reference — v0.6 (draft)
 
 Every tag in the language, its parameters, defaults, exact semantics, and what it compiles to. This file is the source of truth for the compiler's tag registry, the editor's autocomplete, and the `prior explain` readback strings.
 
@@ -171,6 +171,7 @@ Evaluation is bar-close (SPEC §6); precedence within a bar: stop → breakeven 
 | `[max_positions N]` | number | never hold more than N open positions across the strategy |
 | `[max_position N%]` | percent | no single position may exceed N% of equity at entry |
 | `[daily_loss $N]` | dollar | halt new entries for the day after realized losses reach $N |
+| `[cooldown N]` | number | no re-entry for N bars after any exit — unlike other risk tags, this one shapes generate_signals directly |
 
 Risk tags attach as strategy-level metadata for the runner; they do not alter `generate_signals`.
 

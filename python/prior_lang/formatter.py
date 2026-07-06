@@ -100,13 +100,21 @@ def format_program(prog: Program) -> str:
             blocks.append("risk " + " ".join(_tag(t) for t in prog.risk_tags))
         return "\n\n".join(blocks) + "\n"
 
-    joiner = " and " if prog.entry_logic == "all" else " or "
     action = "short" if prog.direction == "short" else "buy"
-    entry = "when " + joiner.join(_term(t) for t in prog.entry_terms)
-    entry += f"\n  {action} {_tag(prog.sizing)}" if prog.sizing else ""
-    blocks.append(entry)
+    rules = prog.rules or [{"logic": prog.entry_logic, "terms": prog.entry_terms, "sizing": prog.sizing}]
+    for rule in rules:
+        joiner = " and " if rule["logic"] == "all" else " or "
+        entry = "when " + joiner.join(_term(t) for t in rule["terms"])
+        if rule["sizing"] is not None:
+            entry += f"\n  {action} {_tag(rule['sizing'])}"
+        blocks.append(entry)
 
     exit_kw = "cover" if prog.direction == "short" else "sell"
+    if prog.partial_terms:
+        p_lines = [f"{exit_kw} half when {_term(prog.partial_terms[0])}"]
+        for t in prog.partial_terms[1:]:
+            p_lines.append(f"  or {_term(t)}")
+        blocks.append("\n".join(p_lines))
     exit_lines = [f"{exit_kw} when {_term(prog.exit_terms[0])}"]
     for t in prog.exit_terms[1:]:
         exit_lines.append(f"  or {_term(t)}")

@@ -178,11 +178,27 @@ def explain_strategy(strategy: dict) -> str:
         return "\n".join(lines)
 
     direction = strategy.get("direction", "long")
-    entry = strategy["entry"]
-    joiner = " and " if entry.get("match_logic", "all") == "all" else " or "
-    conds = joiner.join(_condition_text(c) for c in entry["conditions"])
-    lines.append(f"{_sizing_text(strategy.get('position_sizing'), direction)} when {conds}. "
-                 "Entries trigger once per signal, on the bar the condition becomes true.")
+    rule_dicts = strategy.get("rules") or [
+        {**strategy["entry"], "position_sizing": strategy.get("position_sizing")}
+    ]
+    rule_lines = []
+    for r in rule_dicts:
+        joiner = " and " if r.get("match_logic", "all") == "all" else " or "
+        conds = joiner.join(_condition_text(c) for c in r["conditions"])
+        rule_lines.append(f"{_sizing_text(r.get('position_sizing'), direction)} when {conds}")
+    lines.append(". Or: ".join(rule_lines) +
+                 ". Entries trigger once per signal, on the bar a rule becomes true; one position at a time.")
+    p = strategy.get("partial_exit")
+    if p:
+        p_bits = []
+        if p.get("profit_target_pct") is not None:
+            side = "below" if direction == "short" else "above"
+            p_bits.append(f"{_num(p['profit_target_pct'])}% {side} entry")
+        for c in p.get("conditions") or []:
+            p_bits.append(_condition_text(c))
+        if p.get("hold_bars") is not None:
+            p_bits.append(f"after {_plural(p['hold_bars'], 'bar')}")
+        lines.append("Takes half off (once per position) at the first of: " + "; ".join(p_bits) + ".")
 
     ex = strategy.get("exit", {}) or {}
     exits: list[str] = []
@@ -224,6 +240,8 @@ def explain_strategy(strategy: dict) -> str:
         risk_parts.append(f"no single position above {_num(risk['max_position_pct'] * 100)}% of equity")
     if "daily_loss_limit_usd" in risk:
         risk_parts.append(f"new entries halt after ${_num(risk['daily_loss_limit_usd'])} of daily losses")
+    if "cooldown_bars" in risk:
+        risk_parts.append(f"no re-entry for {_plural(risk['cooldown_bars'], 'bar')} after an exit")
     if risk_parts:
         lines.append("Risk guards: " + "; ".join(risk_parts) + ".")
 

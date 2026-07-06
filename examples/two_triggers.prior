@@ -1,0 +1,24 @@
+# Two ways into the same book: a volatility-squeeze breakout sized by
+# risk, and a deep-oversold washout bought with a fixed slice. Either
+# trigger opens the position (one at a time). Half comes off at +5% so a
+# winner pays for the attempt; the rest rides to the middle band or the
+# ATR stop. After any exit the strategy stands down for five bars —
+# revenge trading, made a compile-time impossibility.
+
+strategy "Two Triggers"
+
+universe [sp_top_30]
+timeframe 1d
+
+when [squeeze] and price above [vwap]
+  buy [risk 1%]
+
+when [rsi] < 25
+  buy [5% portfolio]
+
+sell half when [target 5%]
+
+sell when price at [middle_bollinger]
+  or [stop 2 atr]
+
+risk [cooldown 5] [max_positions 5]

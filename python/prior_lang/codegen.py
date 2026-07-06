@@ -444,7 +444,7 @@ def _htf_preamble(tfs: list) -> str:
 
 
 def generate_strategy_code(
-    conditions: List[Dict[str, Any]],
+    conditions: List[Dict[str, Any]] | None = None,
     match_logic: str = "all",
     hold_bars: int = DEFAULT_HOLD_BARS,
     exit_conditions: List[Dict[str, Any]] | None = None,
@@ -456,25 +456,29 @@ def generate_strategy_code(
     trailing_stop_atr: float | None = None,
     breakeven_trigger_pct: float | None = None,
     direction: str = "long",
+    rules: List[Dict[str, Any]] | None = None,
+    partial_exit: Dict[str, Any] | None = None,
+    cooldown_bars: int = 0,
     position_sizing: Dict[str, Any] | None = None,
     risk: Dict[str, Any] | None = None,
 ) -> str:
     """Build the strategy code string.
 
-    Exit rules: each of stop/target/trailing takes EITHER a percent or an
-    ATR multiple (both set is an error). Percent exits measure from the
-    entry close; ATR stops/targets freeze the 14-period ATR at entry, and
-    the ATR trailing stop is a chandelier (current ATR off the watermark).
-    breakeven_trigger_pct arms once price moves N% in the trade's favor,
-    after which a return to the entry price exits.
+    Entry: either `conditions`+`match_logic` (one rule) or `rules` (a list
+    of {conditions, match_logic} — any rule's rising edge enters; one
+    position at a time). Exits: percent or ATR-unit stop/target/trailing,
+    breakeven, condition exits, time. `partial_exit` takes half off once
+    per position (its own target/conditions/hold). `cooldown_bars` blocks
+    re-entry for N bars after any exit. direction="short" mirrors
+    everything. Signals: 0/±1, or fractional (±0.5) once a partial fires.
 
-    Exit precedence within a bar: stop -> breakeven -> target -> trailing
-    -> condition exits -> hold_bars. Bar-close evaluation; entries fire on
-    the rising edge. direction="short" emits 0/-1 signals with all exits
-    mirrored. Long-only, hold-only strategies emit the original vectorized
-    form, byte-stable with pre-Phase-B output.
+    Long-only, single-rule, hold-only strategies emit the original
+    vectorized form, byte-stable with pre-Phase-B output.
     """
-    if not conditions:
+    rule_list = rules if rules else (
+        [{"conditions": conditions, "match_logic": match_logic}] if conditions else []
+    )
+    if not rule_list or not rule_list[0].get("conditions"):
         raise ValueError("At least one condition is required")
     if direction not in ("long", "short"):
         raise ValueError(f"direction must be 'long' or 'short', got {direction!r}")
@@ -486,9 +490,10 @@ def generate_strategy_code(
         if pct_v is not None and atr_v is not None:
             raise ValueError(f"{label}: give a percent or an ATR multiple, not both")
 
-    entry_helpers, entry_body, entry_expr, entry_tfs = _split_condition_blocks(conditions, match_logic, "cond")
     hold = int(max(1, hold_bars))
     is_short = direction == "short"
+    cooldown = int(max(0, cooldown_bars))
+    multi_rule = len(rule_list) > 1
 
     has_priced_exits = any(
         v is not None
@@ -497,16 +502,47 @@ def generate_strategy_code(
                   breakeven_trigger_pct)
     )
     has_cond_exits = bool(exit_conditions)
+    has_v06 = multi_rule or bool(partial_exit) or cooldown > 0
 
     metadata = ""
     if position_sizing:
         metadata += f"POSITION_SIZING = {position_sizing!r}\n"
+    if multi_rule:
+        sizings = [r.get("position_sizing") for r in rule_list]
+        if any(s for s in sizings):
+            metadata += f"RULE_SIZING = {sizings!r}\n"
     if risk:
         metadata += f"RISK = {risk!r}\n"
     if metadata:
         metadata += "\n\n"
 
-    if not has_priced_exits and not has_cond_exits:
+    # ── Per-rule entry blocks ──────────────────────────────────────
+    all_helpers = ""
+    entry_bodies: List[str] = []
+    edge_names: List[str] = []
+    entry_tfs: List[str] = []
+    for r, rule in enumerate(rule_list):
+        prefix = "cond" if not multi_rule else f"cond_r{r}"
+        helpers, body, expr, tfs = _split_condition_blocks(
+            rule["conditions"], rule.get("match_logic", "all"), prefix
+        )
+        all_helpers += helpers
+        for tf in tfs:
+            if tf not in entry_tfs:
+                entry_tfs.append(tf)
+        combined_name = "combined" if not multi_rule else f"combined_r{r}"
+        entries_name = "entries" if not multi_rule else f"entries_r{r}"
+        body += (
+            f"\n\n    {combined_name} = ({expr}).fillna(False)\n"
+            f"    {entries_name} = {combined_name} & ~{combined_name}.shift(1).fillna(False)"
+        )
+        entry_bodies.append(body)
+        edge_names.append(entries_name)
+    entry_body = "\n\n".join(entry_bodies)
+    if multi_rule:
+        entry_body += "\n\n    entries = " + " | ".join(edge_names)
+
+    if not has_priced_exits and not has_cond_exits and not has_v06:
         hold_phrase = f"stays short for {hold} bars" if is_short else f"holds for {hold} bars"
         signals_expr = (
             "entries.astype(int).rolling(%d, min_periods=1).max().fillna(0).astype(int)" % hold
@@ -514,30 +550,48 @@ def generate_strategy_code(
         if is_short:
             signals_expr = "(%s * -1)" % signals_expr
         htf = _htf_preamble(entry_tfs)
-        return f'''{metadata}{entry_helpers}def generate_signals(df):
-    """Auto-generated strategy. Mirrors {len(conditions)} condition(s)
-    combined with {match_logic.upper()}. Enters on the rising edge of the
+        return f'''{metadata}{all_helpers}def generate_signals(df):
+    """Auto-generated strategy. Mirrors {len(rule_list[0]["conditions"])} condition(s)
+    combined with {rule_list[0].get("match_logic", "all").upper()}. Enters on the rising edge of the
     combined match and {hold_phrase}."""
     close = df["close"]
 {htf}
 {entry_body}
 
-    combined = ({entry_expr}).fillna(False)
-    entries = combined & ~combined.shift(1).fillna(False)
     signals = {signals_expr}
     return signals
 '''
 
+    # ── Exit machinery ─────────────────────────────────────────────
     exit_body = ""
     exit_expr = "False"
-    exit_helpers = ""
     exit_tfs: list = []
     if has_cond_exits:
-        exit_helpers, exit_body, exit_expr, exit_tfs = _split_condition_blocks(exit_conditions, "any", "xcond")
+        ehelpers, exit_body, exit_expr, exit_tfs = _split_condition_blocks(exit_conditions, "any", "xcond")
+        all_helpers += ehelpers
         exit_body = "\n" + exit_body + "\n"
         exit_series = f"    exit_cond = ({exit_expr}).fillna(False)\n"
     else:
         exit_series = "    exit_cond = pd.Series(False, index=df.index)\n"
+
+    partial = partial_exit or {}
+    p_frac = float(partial.get("fraction", 0.5)) if partial else 0.0
+    p_target = partial.get("profit_target_pct")
+    p_hold = partial.get("hold_bars")
+    p_conds = partial.get("conditions") or []
+    partial_body = ""
+    partial_series = ""
+    if partial:
+        if p_conds:
+            phelpers, partial_body, p_expr, p_tfs = _split_condition_blocks(p_conds, "any", "pcond")
+            all_helpers += phelpers
+            for tf in p_tfs:
+                if tf not in exit_tfs:
+                    exit_tfs.append(tf)
+            partial_body = "\n" + partial_body + "\n"
+            partial_series = f"    partial_cond = ({p_expr}).fillna(False)\n"
+        else:
+            partial_series = "    partial_cond = pd.Series(False, index=df.index)\n"
 
     stop = float(stop_loss_pct) if stop_loss_pct is not None else 0.0
     target = float(profit_target_pct) if profit_target_pct is not None else 0.0
@@ -566,7 +620,11 @@ def generate_strategy_code(
         exit_desc_parts.append(f"trailing {trail_a} ATR (chandelier)")
     if has_cond_exits:
         exit_desc_parts.append(f"{len(exit_conditions)} exit condition(s)")
+    if partial:
+        exit_desc_parts.append(f"partial ({p_frac:g}) once")
     exit_desc_parts.append(f"max {hold} bars")
+    if cooldown:
+        exit_desc_parts.append(f"{cooldown}-bar cooldown")
     exit_desc = ", ".join(exit_desc_parts)
 
     if is_short:
@@ -581,6 +639,7 @@ def generate_strategy_code(
         trail_a_chk = f"not np.isnan(atr_arr[i]) and px >= hwm + {trail_a} * atr_arr[i]"
         be_arm_chk = f"px <= entry_px * (1 - {be} / 100.0)"
         be_exit_chk = "px >= entry_px"
+        p_target_chk = f"px <= entry_px * (1 - {p_target if p_target else 0.0} / 100.0)"
     else:
         sig_val = "1"
         wm_cmp = ">"
@@ -593,6 +652,7 @@ def generate_strategy_code(
         trail_a_chk = f"not np.isnan(atr_arr[i]) and px <= hwm - {trail_a} * atr_arr[i]"
         be_arm_chk = f"px >= entry_px * (1 + {be} / 100.0)"
         be_exit_chk = "px <= entry_px"
+        p_target_chk = f"px >= entry_px * (1 + {p_target if p_target else 0.0} / 100.0)"
 
     atr_block = ""
     atr_init = ""
@@ -616,6 +676,47 @@ def generate_strategy_code(
         be_init = "\n    be_armed = False"
         be_reset_line = "\n                be_armed = False"
         be_arm_line = f"\n        if not be_armed and {be_arm_chk}:\n            be_armed = True"
+
+    # partial state
+    frac_dtype = "float" if partial else "int"
+    frac_init = ""
+    frac_reset = ""
+    partial_arr_line = ""
+    partial_chain = ""
+    sig_assign_pos = f"            sig[i] = {sig_val}"
+    sig_assign_enter = f"                sig[i] = {sig_val}"
+    if partial:
+        frac_init = "\n    frac = 0.0\n    partial_done = False"
+        frac_reset = "\n                frac = 1.0\n                partial_done = False"
+        partial_arr_line = "    partial_arr = partial_cond.to_numpy()\n"
+        p_checks = []
+        if p_target is not None:
+            p_checks.append(p_target_chk)
+        if p_conds:
+            p_checks.append("partial_arr[i]")
+        if p_hold is not None:
+            p_checks.append(f"bars_held >= {int(p_hold)}")
+        p_cond_expr = " or ".join(p_checks) if p_checks else "False"
+        partial_chain = (
+            "        if not exit_now and not partial_done and (" + p_cond_expr + "):\n"
+            f"            frac = {p_frac}\n"
+            "            partial_done = True\n"
+        )
+        sig_assign_pos = f"            sig[i] = {sig_val} * frac"
+        sig_assign_enter = f"                sig[i] = {sig_val} * frac"
+
+    # cooldown state
+    cd_init = ""
+    cd_set = ""
+    flat_prefix = "            if entries_arr[i]:"
+    if cooldown:
+        cd_init = "\n    cd = 0"
+        cd_set = f"\n            cd = {cooldown}"
+        flat_prefix = (
+            "            if cd > 0:\n"
+            "                cd -= 1\n"
+            "            elif entries_arr[i]:"
+        )
 
     checks = []
     if stop:
@@ -644,36 +745,36 @@ def generate_strategy_code(
 
     all_tfs = entry_tfs + [t for t in exit_tfs if t not in entry_tfs]
     htf = _htf_preamble(all_tfs)
-    return f'''{metadata}{entry_helpers}{exit_helpers}def generate_signals(df):
-    """Auto-generated strategy. Mirrors {len(conditions)} entry
-    condition(s) combined with {match_logic.upper()}. {enter_phrase};
-    exits on first of: {exit_desc}. Bar-close evaluation; exit precedence
-    stop -> breakeven -> target -> trailing -> conditions -> time."""
+    n_conds = sum(len(r["conditions"]) for r in rule_list)
+    rule_phrase = f"{len(rule_list)} rule(s), {n_conds} condition(s)"
+
+    return f'''{metadata}{all_helpers}def generate_signals(df):
+    """Auto-generated strategy: {rule_phrase}. {enter_phrase}
+    of any rule; exits on first of: {exit_desc}. Bar-close evaluation;
+    exit precedence stop -> breakeven -> target -> trailing -> conditions
+    -> time; partial exits fire once, after the full-exit checks."""
     close = df["close"]
 {htf}
 {entry_body}
-
-    combined = ({entry_expr}).fillna(False)
-    entries = combined & ~combined.shift(1).fillna(False)
 {exit_body}
-{exit_series}{atr_block}
+{exit_series}{partial_body}{partial_series}{atr_block}
     entries_arr = entries.to_numpy()
     exit_arr = exit_cond.to_numpy()
-    close_arr = close.to_numpy()
+{partial_arr_line}    close_arr = close.to_numpy()
     n = len(df)
-    sig = np.zeros(n, dtype=int)
+    sig = np.zeros(n, dtype={frac_dtype})
     in_pos = False
     entry_px = 0.0
     hwm = 0.0
-    bars_held = 0{atr_init}{be_init}
+    bars_held = 0{atr_init}{be_init}{frac_init}{cd_init}
     for i in range(n):
         if not in_pos:
-            if entries_arr[i]:
+{flat_prefix}
                 in_pos = True
                 entry_px = close_arr[i]
                 hwm = close_arr[i]
-                bars_held = 0{entry_atr_line}{be_reset_line}
-                sig[i] = {sig_val}
+                bars_held = 0{entry_atr_line}{be_reset_line}{frac_reset}
+{sig_assign_enter}
             continue
         bars_held += 1
         px = close_arr[i]
@@ -681,14 +782,13 @@ def generate_strategy_code(
             hwm = px{be_arm_line}
         exit_now = False
 {exit_chain}
-        if exit_now:
+{partial_chain}        if exit_now:
             in_pos = False
-            sig[i] = 0
+            sig[i] = 0{cd_set}
         else:
-            sig[i] = {sig_val}
+{sig_assign_pos}
     return pd.Series(sig, index=df.index)
 '''
-
 
 
 def _metric_code(metric: Dict[str, Any]) -> str:
@@ -972,6 +1072,30 @@ def compile_strategy(strategy: Dict[str, Any]) -> str:
         profit_target_atr=exit_rule.get("profit_target_atr"),
         trailing_stop_atr=exit_rule.get("trailing_stop_atr"),
         breakeven_trigger_pct=exit_rule.get("breakeven_trigger_pct"),
+        rules=[
+            {
+                "conditions": [
+                    {"type": c["condition"], "params": c.get("params", {}),
+                     **({"timeframe": c["timeframe"]} if c.get("timeframe") else {})}
+                    for c in r["conditions"]
+                ],
+                "match_logic": r.get("match_logic", "all"),
+                "position_sizing": r.get("position_sizing"),
+            }
+            for r in strategy["rules"]
+        ] if strategy.get("rules") else None,
+        partial_exit=(
+            {
+                **strategy["partial_exit"],
+                "conditions": [
+                    {"type": c["condition"], "params": c.get("params", {}),
+                     **({"timeframe": c["timeframe"]} if c.get("timeframe") else {})}
+                    for c in (strategy["partial_exit"].get("conditions") or [])
+                ],
+            }
+            if strategy.get("partial_exit") else None
+        ),
+        cooldown_bars=(strategy.get("risk") or {}).get("cooldown_bars", 0),
         position_sizing=strategy.get("position_sizing"),
         risk=strategy.get("risk"),
     )

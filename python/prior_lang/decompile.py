@@ -234,16 +234,38 @@ def strategy_to_source(strategy: dict) -> str:
     prog.entry_logic = entry.get("match_logic", "all")
     prog.entry_terms = [_condition_to_term(c) for c in entry.get("conditions", [])]
 
-    sizing = strategy.get("position_sizing")
-    if sizing:
+    def _sizing_tag(sizing):
+        if not sizing:
+            return None
         method = sizing.get("method")
         v = _n(sizing.get("value", 0))
         if method == "percent_of_portfolio":
-            prog.sizing = _tag("__pct_portfolio__", params={"value": v * 100})
-        elif method == "fixed_dollar":
-            prog.sizing = _tag("__dollar__", params={"value": v})
-        elif method == "risk_based":
-            prog.sizing = _tag("risk", [("percent", v * 100)])
+            return _tag("__pct_portfolio__", params={"value": v * 100})
+        if method == "fixed_dollar":
+            return _tag("__dollar__", params={"value": v})
+        if method == "risk_based":
+            return _tag("risk", [("percent", v * 100)])
+        return None
+
+    prog.sizing = _sizing_tag(strategy.get("position_sizing"))
+    if strategy.get("rules"):
+        prog.rules = [
+            {
+                "logic": r.get("match_logic", "all"),
+                "terms": [_condition_to_term(c) for c in r["conditions"]],
+                "sizing": _sizing_tag(r.get("position_sizing")),
+            }
+            for r in strategy["rules"]
+        ]
+    p = strategy.get("partial_exit")
+    if p:
+        pterms: list = [_condition_to_term(c) for c in p.get("conditions") or []]
+        if p.get("profit_target_pct") is not None:
+            pterms.append(_tag("target", [("percent", _n(p["profit_target_pct"]))],
+                               params={"value": _n(p["profit_target_pct"]), "unit": "pct"}))
+        if p.get("hold_bars") is not None:
+            pterms.append(_tag("after", [("number", _n(p["hold_bars"])), ("word", "bars")]))
+        prog.partial_terms = pterms
 
     ex = strategy.get("exit", {}) or {}
     exit_terms: list = [_condition_to_term(c) for c in ex.get("conditions") or []]
@@ -272,5 +294,7 @@ def strategy_to_source(strategy: dict) -> str:
         prog.risk_tags.append(_tag("max_position", [("percent", _n(risk["max_position_pct"]) * 100)]))
     if "daily_loss_limit_usd" in risk:
         prog.risk_tags.append(_tag("daily_loss", [("dollar", _n(risk["daily_loss_limit_usd"]))]))
+    if "cooldown_bars" in risk:
+        prog.risk_tags.append(_tag("cooldown", [("number", _n(risk["cooldown_bars"]))], params={"bars": risk["cooldown_bars"]}))
 
     return format_program(prog)

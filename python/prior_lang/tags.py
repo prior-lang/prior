@@ -246,6 +246,10 @@ _register(TagSpec(
     name="daily_loss", kind="risk", usage="n/a",
     positional=[_p("value", DOLLAR, required=True)],
 ))
+_register(TagSpec(
+    name="cooldown", kind="risk", usage="n/a",
+    positional=[_p("bars", NUMBER, required=True)],
+))
 
 # ── Universe tags ──────────────────────────────────────────────────
 
