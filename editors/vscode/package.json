@@ -2,7 +2,7 @@
   "name": "prior-lang",
   "displayName": "PRIOR",
   "description": "Language support for PRIOR trading strategies: syntax highlighting, completions, hovers, diagnostics, and formatting.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "autoquant",
   "license": "MIT",
   "repository": {

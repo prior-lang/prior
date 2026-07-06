@@ -187,6 +187,28 @@ function provideCompletions(document, position) {
   return undefined;
 }
 
+// ── Quick fixes ──────────────────────────────────────────────────────
+
+function provideCodeActions(document, _range, context) {
+  const actions = [];
+  for (const d of context.diagnostics) {
+    if (d.source !== "prior") continue;
+    const m = /Did you mean \[([a-z0-9_.]+)\]\?/i.exec(d.message);
+    if (!m) continue;
+    const wordRange =
+      document.getWordRangeAtPosition(d.range.start, /[A-Za-z_][A-Za-z0-9_.]*/) ||
+      document.getWordRangeAtPosition(d.range.start.translate(0, 1), /[A-Za-z_][A-Za-z0-9_.]*/);
+    if (!wordRange) continue;
+    const action = new vscode.CodeAction(`Change to [${m[1]}]`, vscode.CodeActionKind.QuickFix);
+    action.edit = new vscode.WorkspaceEdit();
+    action.edit.replace(document.uri, wordRange, m[1]);
+    action.diagnostics = [d];
+    action.isPreferred = true;
+    actions.push(action);
+  }
+  return actions;
+}
+
 // ── Formatting ───────────────────────────────────────────────────────
 
 async function provideFormatting(document) {
@@ -215,6 +237,9 @@ function activate(context) {
     vscode.languages.registerHoverProvider("prior", { provideHover }),
     vscode.languages.registerCompletionItemProvider("prior", { provideCompletionItems: provideCompletions }, "["),
     vscode.languages.registerDocumentFormattingEditProvider("prior", { provideDocumentFormattingEdits: provideFormatting }),
+    vscode.languages.registerCodeActionsProvider("prior", { provideCodeActions }, {
+      providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
+    }),
     vscode.workspace.onDidOpenTextDocument(validate),
     vscode.workspace.onDidSaveTextDocument(validate),
     vscode.workspace.onDidChangeTextDocument((e) => {
