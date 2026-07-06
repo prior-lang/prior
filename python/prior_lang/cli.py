@@ -132,9 +132,21 @@ def _cmd_backtest(args) -> int:
             "prior backtest needs bars: --data bars.csv (columns: date,open,high,low,close,volume)"
         )
     from .backtest import (  # lazy: needs pandas
-        load_bars, run_backtest, run_pair_backtest, run_ranking_backtest,
-        run_universe_backtest,
+        load_bars, pair_trade_log, run_backtest, run_pair_backtest,
+        run_ranking_backtest, run_universe_backtest, trade_log,
     )
+
+    def _print_trades(trades):
+        if not trades:
+            print("  no trades")
+            return
+        print(f"  {'ENTRY':<12} {'EXIT':<12} {'DIR':<6} {'IN':>10} {'OUT':>10} {'BARS':>5} {'RET%':>8}  EXIT")
+        for t in trades:
+            print(
+                f"  {t['entry_date']:<12} {t['exit_date']:<12} {t['direction']:<6}"
+                f" {t['entry_price']:>10} {t['exit_price']:>10} {t['bars_held']:>5}"
+                f" {t['return_pct']:>8.2f}  {t['exit_reason']}"
+            )
 
     strategy = _load_program(args.file).to_json()
     if strategy.get("options"):
@@ -145,6 +157,17 @@ def _cmd_backtest(args) -> int:
         )
     df = load_bars(args.data)
     name = strategy.get("name") or Path(args.file).stem
+
+    if args.trades and strategy.get("ranking"):
+        raise SystemExit(
+            "ranking strategies don't have trades to log — holdings turn over "
+            "at rebalances (a rebalance log is planned)"
+        )
+    if args.trades and (strategy.get("universe") or {}).get("type") == "dynamic":
+        raise SystemExit(
+            "--trades with a dynamic universe isn't wired up yet — membership "
+            "masking would make the log lie; scope to a ticker to inspect trades"
+        )
 
     if (strategy.get("universe") or {}).get("type") == "pair":
         if "ticker" not in df.columns:
@@ -172,6 +195,9 @@ def _cmd_backtest(args) -> int:
             f"{res['pair'].split('/')[0]} / short {res['pair'].split('/')[1]}, "
             "each at half the allocation). Borrow costs and leg slippage are not modeled."
         )
+        if args.trades:
+            print("\nTrades (IN/OUT are spread values):")
+            _print_trades(pair_trade_log(strategy, df))
         return 0
 
     if strategy.get("ranking"):
@@ -238,6 +264,11 @@ def _cmd_backtest(args) -> int:
             "max_positions does not apply across tickers).\n"
             "Portfolio-level simulation on full-history data: prior backtest --cloud (coming soon)"
         )
+        if args.trades:
+            for r in sorted(rows, key=lambda x: x["ticker"]):
+                bars = df[df["ticker"].str.upper() == r["ticker"]].drop(columns=["ticker"]).sort_index()
+                print(f"\nTrades — {r['ticker']}:")
+                _print_trades(trade_log(strategy, bars))
         return 0
 
     if (strategy.get("universe") or {}).get("type") == "dynamic":
@@ -263,6 +294,9 @@ def _cmd_backtest(args) -> int:
     width = max(len(label) for label, _ in rows)
     for label, value in rows:
         print(f"  {label:<{width}}  {value}")
+    if args.trades:
+        print("\nTrades:")
+        _print_trades(trade_log(strategy, df))
     print()
     print("Full-history + intraday data across whole universes: prior backtest --cloud (coming soon)")
     return 0
@@ -302,6 +336,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("file")
     p.add_argument("--data", help="bars as CSV, Parquet, JSON, or JSONL (date,open,high,low,close,volume); add a ticker column to run a whole universe from one file")
     p.add_argument("--cloud", action="store_true", help="run against hosted full-history data (coming soon)")
+    p.add_argument("--trades", action="store_true", help="print the per-trade log: entry/exit, direction, bars held, return, and which exit fired")
     p.set_defaults(fn=_cmd_backtest)
 
     args = parser.parse_args(argv)

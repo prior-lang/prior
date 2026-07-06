@@ -479,6 +479,7 @@ def generate_strategy_code(
     cooldown_bars: int = 0,
     position_sizing: Dict[str, Any] | None = None,
     risk: Dict[str, Any] | None = None,
+    trace: bool = False,
 ) -> str:
     """Build the strategy code string.
 
@@ -489,6 +490,12 @@ def generate_strategy_code(
     per position (its own target/conditions/hold). `cooldown_bars` blocks
     re-entry for N bars after any exit. direction="short" mirrors
     everything. Signals: 0/±1, or fractional (±0.5) once a partial fires.
+
+    trace=True emits generate_signals_traced(df) -> (signals, events):
+    the same state machine, additionally recording every entry (which
+    rule), partial, and exit (WHICH branch fired — knowable because
+    precedence is deterministic). Signals are identical either way; a
+    generate_signals alias keeps the standard contract.
 
     Long-only, single-rule, hold-only strategies emit the original
     vectorized form, byte-stable with pre-Phase-B output.
@@ -568,6 +575,32 @@ def generate_strategy_code(
         if is_short:
             signals_expr = "(%s * -1)" % signals_expr
         htf = _htf_preamble(entry_tfs)
+        if trace:
+            dir_val = "-1" if is_short else "1"
+            return f'''{metadata}{all_helpers}def generate_signals_traced(df):
+    """Auto-generated strategy (traced). Mirrors {len(rule_list[0]["conditions"])} condition(s)
+    combined with {rule_list[0].get("match_logic", "all").upper()}. Enters on the rising edge of the
+    combined match and {hold_phrase}; only exit is time, so events
+    derive straight from the signal edges."""
+    close = df["close"]
+{htf}
+{entry_body}
+
+    signals = {signals_expr}
+    sig_arr = signals.to_numpy()
+    events = []
+    for i in range(len(sig_arr)):
+        prev = sig_arr[i - 1] if i else 0
+        if sig_arr[i] != 0 and prev == 0:
+            events.append({{"i": i, "event": "entry", "rule": 0, "dir": {dir_val}}})
+        elif sig_arr[i] == 0 and prev != 0:
+            events.append({{"i": i, "event": "exit", "reason": "time"}})
+    return signals, events
+
+
+def generate_signals(df):
+    return generate_signals_traced(df)[0]
+'''
         return f'''{metadata}{all_helpers}def generate_signals(df):
     """Auto-generated strategy. Mirrors {len(rule_list[0]["conditions"])} condition(s)
     combined with {rule_list[0].get("match_logic", "all").upper()}. Enters on the rising edge of the
@@ -738,27 +771,29 @@ def generate_strategy_code(
 
     checks = []
     if stop:
-        checks.append(stop_chk)
+        checks.append(("stop", stop_chk))
     if stop_a:
-        checks.append(stop_a_chk)
+        checks.append(("stop", stop_a_chk))
     if be:
-        checks.append(f"be_armed and {be_exit_chk}")
+        checks.append(("breakeven", f"be_armed and {be_exit_chk}"))
     if target:
-        checks.append(target_chk)
+        checks.append(("target", target_chk))
     if target_a:
-        checks.append(target_a_chk)
+        checks.append(("target", target_a_chk))
     if trail:
-        checks.append(trail_chk)
+        checks.append(("trailing", trail_chk))
     if trail_a:
-        checks.append(trail_a_chk)
-    checks.append("exit_arr[i]")
-    checks.append(f"bars_held >= {hold}")
+        checks.append(("trailing", trail_a_chk))
+    checks.append(("condition", "exit_arr[i]"))
+    checks.append(("time", f"bars_held >= {hold}"))
 
     chain_lines = []
-    for idx, chk in enumerate(checks):
+    for idx, (label, chk) in enumerate(checks):
         kw = "if" if idx == 0 else "elif"
         chain_lines.append(f"        {kw} {chk}:")
         chain_lines.append("            exit_now = True")
+        if trace:
+            chain_lines.append(f'            reason = "{label}"')
     exit_chain = "\n".join(chain_lines)
 
     all_tfs = entry_tfs + [t for t in exit_tfs if t not in entry_tfs]
@@ -766,7 +801,38 @@ def generate_strategy_code(
     n_conds = sum(len(r["conditions"]) for r in rule_list)
     rule_phrase = f"{len(rule_list)} rule(s), {n_conds} condition(s)"
 
-    return f'''{metadata}{all_helpers}def generate_signals(df):
+    fn_name = "generate_signals_traced" if trace else "generate_signals"
+    trace_init = ""
+    rule_arrs_line = ""
+    entry_event_line = ""
+    exit_event_line = ""
+    return_line = "    return pd.Series(sig, index=df.index)"
+    alias_block = ""
+    if trace:
+        trace_init = "\n    events = []\n    reason = \"\""
+        if multi_rule:
+            rule_arrs_line = (
+                "    _rule_edges = ["
+                + ", ".join(f"entries_r{r}.to_numpy()" for r in range(len(rule_list)))
+                + "]\n"
+            )
+            rule_expr = "[r for r, _a in enumerate(_rule_edges) if _a[i]][0]"
+        else:
+            rule_expr = "0"
+        entry_event_line = (
+            f'\n                events.append({{"i": i, "event": "entry", '
+            f'"rule": {rule_expr}, "dir": {sig_val}}})'
+        )
+        exit_event_line = (
+            '\n            events.append({"i": i, "event": "exit", "reason": reason})'
+        )
+        return_line = "    return pd.Series(sig, index=df.index), events"
+        alias_block = (
+            "\n\n\ndef generate_signals(df):\n"
+            "    return generate_signals_traced(df)[0]\n"
+        )
+
+    code = f'''{metadata}{all_helpers}def {fn_name}(df):
     """Auto-generated strategy: {rule_phrase}. {enter_phrase}
     of any rule; exits on first of: {exit_desc}. Bar-close evaluation;
     exit precedence stop -> breakeven -> target -> trailing -> conditions
@@ -777,14 +843,14 @@ def generate_strategy_code(
 {exit_body}
 {exit_series}{partial_body}{partial_series}{atr_block}
     entries_arr = entries.to_numpy()
-    exit_arr = exit_cond.to_numpy()
+{rule_arrs_line}    exit_arr = exit_cond.to_numpy()
 {partial_arr_line}    close_arr = close.to_numpy()
     n = len(df)
     sig = np.zeros(n, dtype={frac_dtype})
     in_pos = False
     entry_px = 0.0
     hwm = 0.0
-    bars_held = 0{atr_init}{be_init}{frac_init}{cd_init}
+    bars_held = 0{atr_init}{be_init}{frac_init}{cd_init}{trace_init}
     for i in range(n):
         if not in_pos:
 {flat_prefix}
@@ -792,7 +858,7 @@ def generate_strategy_code(
                 entry_px = close_arr[i]
                 hwm = close_arr[i]
                 bars_held = 0{entry_atr_line}{be_reset_line}{frac_reset}
-{sig_assign_enter}
+{sig_assign_enter}{entry_event_line}
             continue
         bars_held += 1
         px = close_arr[i]
@@ -802,11 +868,12 @@ def generate_strategy_code(
 {exit_chain}
 {partial_chain}        if exit_now:
             in_pos = False
-            sig[i] = 0{cd_set}
+            sig[i] = 0{exit_event_line}{cd_set}
         else:
 {sig_assign_pos}
-    return pd.Series(sig, index=df.index)
+{return_line}
 '''
+    return code + alias_block
 
 
 
@@ -850,23 +917,29 @@ def _dir_check_exprs(ex: Dict[str, Any], is_short: bool) -> Dict[str, str]:
     return out
 
 
-def _dir_chain(exprs: Dict[str, str], cond_arr: str, indent: str) -> str:
+_CHECK_LABELS = {"stop": "stop", "stop_a": "stop", "target": "target",
+                 "target_a": "target", "trail": "trailing", "trail_a": "trailing"}
+
+
+def _dir_chain(exprs: Dict[str, str], cond_arr: str, indent: str, trace: bool = False) -> str:
     checks = []
     for key in ("stop", "stop_a"):
         if exprs[key]:
-            checks.append(exprs[key])
+            checks.append((_CHECK_LABELS[key], exprs[key]))
     if exprs["has_be"]:
-        checks.append(f"be_armed and {exprs['be_exit']}")
+        checks.append(("breakeven", f"be_armed and {exprs['be_exit']}"))
     for key in ("target", "target_a", "trail", "trail_a"):
         if exprs[key]:
-            checks.append(exprs[key])
-    checks.append(f"{cond_arr}[i]")
-    checks.append(f"bars_held >= {exprs['hold']}")
+            checks.append((_CHECK_LABELS[key], exprs[key]))
+    checks.append(("condition", f"{cond_arr}[i]"))
+    checks.append(("time", f"bars_held >= {exprs['hold']}"))
     lines = []
-    for idx, chk in enumerate(checks):
+    for idx, (label, chk) in enumerate(checks):
         kw = "if" if idx == 0 else "elif"
         lines.append(f"{indent}{kw} {chk}:")
         lines.append(f"{indent}    exit_now = True")
+        if trace:
+            lines.append(f'{indent}    reason = "{label}"')
     return "\n".join(lines)
 
 
@@ -880,6 +953,7 @@ def generate_mixed_code(
     partial_short: Dict[str, Any] | None = None,
     position_sizing: Dict[str, Any] | None = None,
     risk: Dict[str, Any] | None = None,
+    trace: bool = False,
 ) -> str:
     """Emit generate_signals for a long+short strategy.
 
@@ -949,8 +1023,8 @@ def generate_mixed_code(
 
     lex = _dir_check_exprs(exit_long, is_short=False)
     sex = _dir_check_exprs(exit_short, is_short=True)
-    long_chain = _dir_chain(lex, "exit_long_arr", "            ")
-    short_chain = _dir_chain(sex, "exit_short_arr", "            ")
+    long_chain = _dir_chain(lex, "exit_long_arr", "            ", trace=trace)
+    short_chain = _dir_chain(sex, "exit_short_arr", "            ", trace=trace)
 
     needs_atr = lex["needs_atr"] or sex["needs_atr"]
     has_be = lex["has_be"] or sex["has_be"]
@@ -1043,6 +1117,12 @@ def generate_mixed_code(
             "                partial_done = True\n"
         )
 
+    flip_event = ""
+    if trace:
+        flip_event = (
+            '\n            events.append({"i": i, "event": "exit", "reason": "reverse"})'
+            '\n            events.append({"i": i, "event": "entry", "dir": dir})'
+        )
     reverse_block = ""
     if reverse:
         reverse_block = (
@@ -1051,13 +1131,13 @@ def generate_mixed_code(
             "\n            dir = -1"
             "\n            entry_px = px"
             "\n            hwm = px"
-            "\n            bars_held = 0" + entry_atr_line.replace("                ", "            ") + be_reset.replace("                ", "            ") + frac_flip_reset + sig_flip +
+            "\n            bars_held = 0" + entry_atr_line.replace("                ", "            ") + be_reset.replace("                ", "            ") + frac_flip_reset + sig_flip + flip_event +
             "\n            continue"
             "\n        if dir < 0 and bool(long_arr[i]) and not bool(short_arr[i]):"
             "\n            dir = 1"
             "\n            entry_px = px"
             "\n            hwm = px"
-            "\n            bars_held = 0" + entry_atr_line.replace("                ", "            ") + be_reset.replace("                ", "            ") + frac_flip_reset + sig_flip +
+            "\n            bars_held = 0" + entry_atr_line.replace("                ", "            ") + be_reset.replace("                ", "            ") + frac_flip_reset + sig_flip + flip_event +
             "\n            continue"
         )
 
@@ -1075,7 +1155,27 @@ def generate_mixed_code(
     n_l = sum(len(r["conditions"]) for r in long_rules)
     n_s = sum(len(r["conditions"]) for r in short_rules)
 
-    return f'''{metadata}{all_helpers}def generate_signals(df):
+    fn_name = "generate_signals_traced" if trace else "generate_signals"
+    trace_init = "\n    events = []\n    reason = \"\"" if trace else ""
+    entry_event_line = (
+        '\n                events.append({"i": i, "event": "entry", "dir": dir})'
+        if trace else ""
+    )
+    exit_event_line = (
+        '\n            events.append({"i": i, "event": "exit", "reason": reason})'
+        if trace else ""
+    )
+    return_line = (
+        "    return pd.Series(sig, index=df.index), events"
+        if trace else "    return pd.Series(sig, index=df.index)"
+    )
+    alias_block = (
+        "\n\n\ndef generate_signals(df):\n"
+        "    return generate_signals_traced(df)[0]\n"
+        if trace else ""
+    )
+
+    code = f'''{metadata}{all_helpers}def {fn_name}(df):
     """Auto-generated long+short strategy: {len(long_rules)} long rule(s)
     ({n_l} condition(s)) closed by the sell spec, {len(short_rules)} short
     rule(s) ({n_s} condition(s)) closed by the cover spec. One position at
@@ -1100,7 +1200,7 @@ def generate_mixed_code(
     dir = 0
     entry_px = 0.0
     hwm = 0.0
-    bars_held = 0{atr_init}{be_init}{cd_init}{frac_init}
+    bars_held = 0{atr_init}{be_init}{cd_init}{frac_init}{trace_init}
     for i in range(n):
         if not in_pos:
 {cd_gate}            le = bool(long_arr[i])
@@ -1113,7 +1213,7 @@ def generate_mixed_code(
                 entry_px = close_arr[i]
                 hwm = close_arr[i]
                 bars_held = 0{entry_atr_line}{be_reset}{frac_reset}
-{sig_enter}
+{sig_enter}{entry_event_line}
             continue
         bars_held += 1
         px = close_arr[i]{reverse_block}
@@ -1130,11 +1230,12 @@ def generate_mixed_code(
 {short_chain}
 {partial_chain}        if exit_now:
             in_pos = False
-            sig[i] = 0{cd_set}
+            sig[i] = 0{exit_event_line}{cd_set}
         else:
 {sig_hold}
-    return pd.Series(sig, index=df.index)
+{return_line}
 '''
+    return code + alias_block
 
 
 
@@ -1577,7 +1678,7 @@ def _find_cloud_only(strategy: Dict[str, Any]) -> list:
     return found
 
 
-def generate_pair_code(base_code: str, pair: Dict[str, Any]) -> str:
+def generate_pair_code(base_code: str, pair: Dict[str, Any], trace: bool = False) -> str:
     """Wrap single-instrument strategy code for a two-legged spread.
 
     The base code's generate_signals(df) runs unchanged on a synthetic
@@ -1588,12 +1689,19 @@ def generate_pair_code(base_code: str, pair: Dict[str, Any]) -> str:
     a, b = [str(t).upper() for t in pair["tickers"]]
     form = pair.get("form", "ratio")
     expr = "leg_a / leg_b" if form == "ratio" else "leg_a - leg_b"
+    fn = "generate_pair_signals_traced" if trace else "generate_pair_signals"
+    inner = "generate_signals_traced" if trace else "generate_signals"
+    traced_alias = (
+        "\n\n\ndef generate_pair_signals(panel):\n"
+        "    return generate_pair_signals_traced(panel)[0]\n"
+        if trace else ""
+    )
     return base_code + f'''
 
 PAIR = ({a!r}, {b!r}, {form!r})
 
 
-def generate_pair_signals(panel):
+def {fn}(panel):
     """Signals on the {form} spread {a}/{b}. A +1 spread position means
     long {a} / short {b} in equal dollar legs; -1 mirrors; 0 is flat
     both legs."""
@@ -1605,16 +1713,20 @@ def generate_pair_signals(panel):
         "open": spread, "high": spread, "low": spread,
         "close": spread, "volume": 0.0,
     }})
-    return generate_signals(df)
-'''
+    return {inner}(df)
+''' + traced_alias
 
 
-def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False) -> str:
+def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False, trace: bool = False) -> str:
     """Strategy JSON (the parser's output) → Python source string.
 
     Cloud-only conditions (IV rank, earnings calendar, short interest)
     refuse local compilation unless allow_cloud=True — the hosted runner
-    passes that after substituting its own evaluators."""
+    passes that after substituting its own evaluators.
+
+    trace=True (rules and mixed strategies) additionally emits
+    generate_signals_traced, which records entries, partials, and which
+    exit branch fired — the toolchain's answer to logging."""
     if not allow_cloud:
         cloud = _find_cloud_only(strategy)
         if cloud:
@@ -1634,13 +1746,22 @@ def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False) -> str
         ]
 
     if strategy.get("options"):
+        if trace:
+            from .errors import PriorError
+            raise PriorError("the trade log covers stock strategies — options backtests live in AutoQuant")
         return generate_options_code(strategy["options"], risk=strategy.get("risk"))
+    if trace and strategy.get("ranking"):
+        from .errors import PriorError
+        raise PriorError(
+            "ranking strategies don't have trades to log — holdings turn over at "
+            "rebalances (a rebalance log is planned)"
+        )
 
     uni = strategy.get("universe") or {}
     pair = uni if uni.get("type") == "pair" else None
 
     def _wrap(code: str) -> str:
-        return generate_pair_code(code, pair) if pair else code
+        return generate_pair_code(code, pair, trace=trace) if pair else code
 
     if strategy.get("exits"):  # long+short strategy
         ex_l = dict(strategy["exits"]["long"])
@@ -1665,6 +1786,7 @@ def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False) -> str
             partial_short=strategy.get("partial_exit_short"),
             position_sizing=strategy.get("position_sizing"),
             risk=strategy.get("risk"),
+            trace=trace,
         ))
 
     ranking = strategy.get("ranking")
@@ -1735,4 +1857,5 @@ def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False) -> str
         cooldown_bars=(strategy.get("risk") or {}).get("cooldown_bars", 0),
         position_sizing=strategy.get("position_sizing"),
         risk=strategy.get("risk"),
+        trace=trace,
     ))

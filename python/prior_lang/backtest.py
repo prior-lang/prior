@@ -230,6 +230,77 @@ def run_backtest(strategy: dict, df, mask=None) -> dict:
     }
 
 
+def _pair_events_into_trades(events, index, closes) -> list[dict]:
+    """Pair up entry/exit events into trade records. `closes` is the
+    series the strategy actually traded on (raw closes, or the spread)."""
+    trades = []
+    open_t = None
+    for e in events:
+        if e["event"] == "entry":
+            open_t = {"i": e["i"], "dir": int(e.get("dir", 1)), "rule": e.get("rule")}
+        elif e["event"] == "exit" and open_t is not None:
+            i0, i1, d = open_t["i"], e["i"], open_t["dir"]
+            trades.append({
+                "entry_date": str(getattr(index[i0], "date", lambda: index[i0])()),
+                "exit_date": str(getattr(index[i1], "date", lambda: index[i1])()),
+                "direction": "long" if d > 0 else "short",
+                "rule": open_t["rule"],
+                "entry_price": round(float(closes[i0]), 4),
+                "exit_price": round(float(closes[i1]), 4),
+                "bars_held": i1 - i0,
+                "return_pct": round(d * (float(closes[i1]) / float(closes[i0]) - 1) * 100, 2),
+                "exit_reason": e["reason"],
+            })
+            open_t = None
+    if open_t is not None:
+        i0, i1, d = open_t["i"], len(closes) - 1, open_t["dir"]
+        trades.append({
+            "entry_date": str(getattr(index[i0], "date", lambda: index[i0])()),
+            "exit_date": str(getattr(index[i1], "date", lambda: index[i1])()),
+            "direction": "long" if d > 0 else "short",
+            "rule": open_t["rule"],
+            "entry_price": round(float(closes[i0]), 4),
+            "exit_price": round(float(closes[i1]), 4),
+            "bars_held": i1 - i0,
+            "return_pct": round(d * (float(closes[i1]) / float(closes[i0]) - 1) * 100, 2),
+            "exit_reason": "open",
+        })
+    return trades
+
+
+def trade_log(strategy: dict, df) -> list[dict]:
+    """Per-trade log for a rules/mixed strategy over one instrument's
+    bars: entry/exit dates and prices, direction, bars held, return, and
+    WHICH exit fired (knowable because exit precedence is deterministic).
+    Partial exits scale the position mid-trade; the log reports the full
+    entry-to-exit move per direction."""
+    pd, np = _require_pandas()
+    code = compile_strategy(strategy, trace=True)
+    namespace = {"pd": pd, "np": np, "math": math}
+    exec(code, namespace)  # our own generated code
+    _sig, events = namespace["generate_signals_traced"](df)
+    return _pair_events_into_trades(events, df.index, df["close"].astype(float).to_numpy())
+
+
+def pair_trade_log(strategy: dict, df) -> list[dict]:
+    """Trade log for a spread strategy: prices are SPREAD values."""
+    pd, np = _require_pandas()
+    a, b = [str(t).upper() for t in strategy["universe"]["tickers"]]
+    form = strategy["universe"].get("form", "ratio")
+    panel = {
+        str(t).upper(): g.drop(columns=["ticker"]).sort_index()
+        for t, g in df.groupby(df["ticker"].str.upper())
+    }
+    code = compile_strategy(strategy, trace=True)
+    namespace = {"pd": pd, "np": np, "math": math}
+    exec(code, namespace)  # our own generated code
+    sig, events = namespace["generate_pair_signals_traced"](panel)
+    close_a = panel[a]["close"].astype(float).reindex(sig.index)
+    close_b = panel[b]["close"].astype(float).reindex(sig.index)
+    spread = (close_a / close_b) if form == "ratio" else (close_a - close_b)
+    return _pair_events_into_trades(events, sig.index, spread.to_numpy())
+
+
 def run_pair_backtest(strategy: dict, df) -> dict:
     """Backtest a spread strategy over a multi-ticker frame containing
     both legs. Position accounting is equal dollar legs: a +1 spread
