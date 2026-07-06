@@ -19,5 +19,11 @@ classifiers = [
     "Topic :: Office/Business :: Financial :: Investment",
 ]
 
+[project.optional-dependencies]
+backtest = ["pandas>=2.0", "numpy>=1.24"]
+
+[project.scripts]
+prior = "prior_lang.cli:main"
+
 [tool.setuptools.packages.find]
 include = ["prior_lang*"]

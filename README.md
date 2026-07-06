@@ -35,16 +35,32 @@ PRIOR compiles to an open JSON interchange format, then to plain Python you can 
 
 The reference runner is [AutoQuant](https://autoquant.ai), where PRIOR strategies backtest and deploy against real market data. The format is open; nothing prevents other runners.
 
+## The toolchain
+
+```
+prior validate strategy.prior          errors (with line numbers and suggestions) or ok
+prior fmt strategy.prior               canonical formatting (--write rewrites in place)
+prior compile strategy.prior           emit runnable Python (--json for the interchange format)
+prior explain strategy.prior           every layer: English readback, JSON, generated Python
+prior backtest strategy.prior --data bars.csv    metrics over your own OHLCV data
+```
+
+Install: `pip install prior-lang` (add `[backtest]` for the backtester's pandas dependency).
+
 ## Status
 
-Phase A: specification draft. The spec (`spec/SPEC.md`), tag reference (`spec/TAGS.md`), and examples (`examples/*.prior`) are written; the compiler is next. Pre-1.0, syntax may change.
+Pre-1.0; syntax may change. Working today: the spec, the parser, the canonical
+formatter, the reference code generator, the English readback, and a local
+reference backtester (bring your own CSV/Parquet bars). Coming: bundled sample
+data, hosted full-history backtests (`--cloud`).
 
 ## Repository layout
 
 ```
-spec/SPEC.md       language specification (grammar, semantics, error contract)
-spec/TAGS.md       every tag: params, defaults, exact semantics, readback strings
-examples/*.prior   five complete strategies — the executable spec
+spec/SPEC.md         language specification (grammar, semantics, error contract)
+spec/TAGS.md         every tag: params, defaults, exact semantics, readback strings
+examples/*.prior     five complete strategies — the executable spec
+python/prior_lang/   the reference implementation (zero-dependency parser + CLI)
 ```
 
 ## License
