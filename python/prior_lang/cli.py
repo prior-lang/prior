@@ -302,6 +302,67 @@ def _cmd_backtest(args) -> int:
     return 0
 
 
+def _cmd_trace(args) -> int:
+    from .backtest import load_bars  # lazy: needs pandas
+    from .trace import trace_report
+
+    strategy = _load_program(args.file).to_json()
+    df = load_bars(args.data)
+    name = strategy.get("name") or Path(args.file).stem
+
+    uni = strategy.get("universe") or {}
+    if uni.get("type") == "pair":
+        import pandas as pd
+        if "ticker" not in df.columns:
+            raise SystemExit("a spread trace needs both legs — the data file needs a ticker column")
+        a, b = [str(t).upper() for t in uni["tickers"]]
+        panel = {
+            str(t).upper(): g.drop(columns=["ticker"]).sort_index()
+            for t, g in df.groupby(df["ticker"].str.upper())
+        }
+        missing = [t for t in (a, b) if t not in panel]
+        if missing:
+            raise SystemExit(f"the data file has no rows for {', '.join(missing)}")
+        leg_a = panel[a]["close"].astype(float)
+        leg_b = panel[b]["close"].astype(float)
+        leg_a, leg_b = leg_a.align(leg_b, join="inner")
+        spread = (leg_a / leg_b if uni.get("form", "ratio") == "ratio" else leg_a - leg_b).dropna()
+        df = pd.DataFrame({"open": spread, "high": spread, "low": spread,
+                           "close": spread, "volume": 0.0})
+        name += f" ({a}/{b} spread)"
+    elif "ticker" in df.columns:
+        if not args.ticker:
+            raise SystemExit("multi-ticker data file — pick one instrument: --ticker NVDA")
+        df = df[df["ticker"].str.upper() == args.ticker.upper()].drop(columns=["ticker"]).sort_index()
+        if df.empty:
+            raise SystemExit(f"no rows for {args.ticker.upper()} in the data file")
+        name += f" — {args.ticker.upper()}"
+
+    report = trace_report(strategy, df, date=args.date, last=args.last)
+    for d in report["dates"]:
+        sig = d["signal"]
+        state = "flat" if sig == 0 else ("long" if sig > 0 else "short")
+        if sig != 0 and abs(sig) != 1.0:
+            state += f" (partial {abs(sig):g})"
+        print(f"{name} — {d['date']} (bar {d['bar'] + 1} of {report['bars']})   signal {sig:g}, {state}")
+        for r in d["rules"]:
+            action = "buy" if r["direction"] == "long" else "short"
+            print(f"  when ({r['match_logic']}) → {action}:")
+            for c in r["conditions"]:
+                print(f"    {'✓' if c['verdict'] else '✗'} {c['text']}")
+        for e in d["exits"]:
+            if e["conditions"]:
+                print(f"  {e['keyword']} (any):")
+                for c in e["conditions"]:
+                    print(f"    {'✓' if c['verdict'] else '✗'} {c['text']}")
+        print()
+    print(
+        "Priced exits (stop/target/trailing/time) evaluate against the open "
+        "position — see prior backtest --trades for which one fired."
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="prior",
@@ -331,6 +392,14 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("explain", help="show every layer: English, JSON, generated Python")
     p.add_argument("file")
     p.set_defaults(fn=_cmd_explain)
+
+    p = sub.add_parser("trace", help="why did/didn't it fire — every condition's verdict on a bar")
+    p.add_argument("file")
+    p.add_argument("--data", required=True, help="bars file (same formats as backtest)")
+    p.add_argument("--date", help="bar to inspect (default: the last bar)")
+    p.add_argument("--last", type=int, default=1, help="inspect the last N bars ending at --date (max 10)")
+    p.add_argument("--ticker", help="which instrument to trace in a multi-ticker file")
+    p.set_defaults(fn=_cmd_trace)
 
     p = sub.add_parser("backtest", help="run the strategy over a bars file and print metrics")
     p.add_argument("file")

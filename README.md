@@ -43,6 +43,11 @@ prior explain strategy.prior           every layer: English readback, JSON, gene
 prior backtest strategy.prior --data bars.csv    metrics over your own OHLCV data
                                                  (CSV, Parquet, JSON, or JSONL; add a ticker
                                                  column to run a whole universe from one file)
+prior backtest ... --trades            the per-trade log: entry/exit, bars held, return,
+                                                 and WHICH exit fired (stop? target? time?)
+prior trace strategy.prior --data bars.csv --date 2026-03-14
+                                                 why did/didn't it fire: every condition's
+                                                 verdict on any bar
 ```
 
 Strategies are accepted as `.prior` text or as the interchange `.json` — every verb takes either, and `prior fmt strategy.json` converts JSON back into readable PRIOR text.
