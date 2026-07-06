@@ -63,13 +63,58 @@ def load_bars(path: str):
 
 
 def resolve_universe_tickers(strategy: dict) -> list[str] | None:
-    """The tickers a strategy's universe declares, or None if unknown."""
+    """The tickers a strategy's universe declares, or None if unknown
+    (manual lists without tickers, and dynamic universes — those resolve
+    from the data itself via dynamic_membership)."""
     from .tags import UNIVERSE_TICKERS
 
     uni = strategy.get("universe", {}) or {}
     if uni.get("type") == "prebuilt":
         return UNIVERSE_TICKERS.get(uni.get("key"))
+    if uni.get("type") == "dynamic":
+        return None
     return uni.get("tickers")
+
+
+def dynamic_membership(strategy: dict, df):
+    """Membership mask (dates × tickers, bool) for a dynamic universe, or
+    None if the universe isn't dynamic.
+
+    top_volume semantics: on the first bar of each month, rank tickers by
+    trailing `period`-bar average dollar volume as of the PRIOR bar (no
+    same-bar lookahead) and keep the top `count` until the next recompute.
+    Bars before the first recompute have no members — the strategy waits,
+    exactly like a warmup period.
+    """
+    pd, _np = _require_pandas()
+    uni = strategy.get("universe", {}) or {}
+    if uni.get("type") != "dynamic":
+        return None
+    p = uni.get("params", {}) or {}
+    count, period = int(p.get("count", 50)), int(p.get("period", 20))
+
+    closes = df.pivot_table(index=df.index, columns="ticker", values="close")
+    volumes = df.pivot_table(index=df.index, columns="ticker", values="volume")
+    closes.columns = [str(c).upper() for c in closes.columns]
+    volumes.columns = [str(c).upper() for c in volumes.columns]
+    dollar = (closes * volumes).rolling(period, min_periods=period).mean().shift(1)
+
+    member = pd.DataFrame(False, index=closes.index, columns=closes.columns)
+    months = closes.index.to_period("M")
+    recompute = pd.Series(True, index=closes.index).groupby(months).cumsum() == 1
+    current: set[str] = set()
+    started = False
+    for i, ts in enumerate(closes.index):
+        # Recompute on month-firsts; before the first successful ranking,
+        # keep trying every bar so warmup ends as soon as data allows.
+        if recompute.iloc[i] or not started:
+            ranked = dollar.iloc[i].dropna().sort_values(ascending=False)
+            if len(ranked):
+                current = set(ranked.head(count).index)
+                started = True
+        if current:
+            member.loc[ts, list(current)] = True
+    return member
 
 
 def run_universe_backtest(strategy: dict, df) -> dict:
@@ -83,18 +128,26 @@ def run_universe_backtest(strategy: dict, df) -> dict:
     """
     universe = resolve_universe_tickers(strategy)
     in_file = [str(t).upper() for t in df["ticker"].unique()]
+    membership = dynamic_membership(strategy, df)
 
     if universe is not None:
         wanted = [t for t in in_file if t in set(universe)]
         skipped = sorted(set(in_file) - set(universe))
         not_in_file = sorted(set(universe) - set(in_file))
+    elif membership is not None:
+        # Dynamic universe: every ticker with at least one membership
+        # window runs; its signals are masked outside those windows.
+        wanted = [t for t in in_file if t in membership.columns and bool(membership[t].any())]
+        skipped = sorted(set(in_file) - set(wanted))
+        not_in_file = []
     else:
         wanted, skipped, not_in_file = in_file, [], []
 
     per_ticker = []
     for ticker in wanted:
         bars = df[df["ticker"].str.upper() == ticker].drop(columns=["ticker"]).sort_index()
-        result = run_backtest(strategy, bars)
+        mask = membership[ticker].reindex(bars.index).fillna(False) if membership is not None else None
+        result = run_backtest(strategy, bars, mask=mask)
         result["ticker"] = ticker
         per_ticker.append(result)
 
@@ -108,14 +161,21 @@ def run_universe_backtest(strategy: dict, df) -> dict:
     }
 
 
-def run_backtest(strategy: dict, df) -> dict:
-    """Execute the strategy over one instrument's bars; return metrics."""
+def run_backtest(strategy: dict, df, mask=None) -> dict:
+    """Execute the strategy over one instrument's bars; return metrics.
+
+    `mask` (optional bool Series on df's index) zeroes signals outside a
+    dynamic universe's membership windows. Signals stay float — partial
+    exits emit fractional positions like 0.5.
+    """
     pd, np = _require_pandas()
 
     code = compile_strategy(strategy)
     namespace = {"pd": pd, "np": np, "math": math}
     exec(code, namespace)  # our own generated code
-    signals = namespace["generate_signals"](df).astype(int)
+    signals = namespace["generate_signals"](df).astype(float)
+    if mask is not None:
+        signals = signals.where(mask, 0.0)
 
     close = df["close"].astype(float)
     # Signal at bar i → position over bar i+1 (no lookahead at the fill).
@@ -124,20 +184,26 @@ def run_backtest(strategy: dict, df) -> dict:
     strat_returns = position * bar_returns
     equity = (1 + strat_returns).cumprod()
 
-    # Trades: edges of the signal (+1 long, -1 short); open trade closes at
-    # the last bar. Short PnL is the mirrored price move.
+    # Trades: edges of the signal's SIGN (fractional partials like 0.5 stay
+    # inside one trade; a reverse-flip closes one trade and opens the next).
+    # An open trade closes at the last bar. Short PnL is the mirrored move.
     sig = signals.to_numpy()
     closes = close.to_numpy()
     trades = []
     entry_i = None
     entry_dir = 0
+    prev = 0.0
     for i in range(len(sig)):
-        if sig[i] != 0 and (i == 0 or sig[i - 1] == 0):
-            entry_i = i
-            entry_dir = int(sig[i])
-        elif sig[i] == 0 and i > 0 and sig[i - 1] != 0 and entry_i is not None:
+        s = sig[i]
+        if s != 0 and prev == 0:
+            entry_i, entry_dir = i, (1 if s > 0 else -1)
+        elif entry_i is not None and (s == 0 or (s > 0) != (prev > 0)):
             trades.append(entry_dir * (closes[i] / closes[entry_i] - 1))
-            entry_i = None
+            if s != 0:  # flipped straight into the other direction
+                entry_i, entry_dir = i, (1 if s > 0 else -1)
+            else:
+                entry_i = None
+        prev = s
     if entry_i is not None:
         trades.append(entry_dir * (closes[-1] / closes[entry_i] - 1))
 
@@ -178,6 +244,7 @@ def run_ranking_backtest(strategy: dict, df) -> dict:
         for t, g in df.groupby(df["ticker"].str.upper())
     }
     universe = resolve_universe_tickers(strategy)
+    membership = dynamic_membership(strategy, df)
     skipped, missing = [], []
     if universe is not None:
         skipped = sorted(set(panel) - set(universe))
@@ -190,6 +257,11 @@ def run_ranking_backtest(strategy: dict, df) -> dict:
     namespace = {"pd": pd, "np": np, "math": math}
     exec(code, namespace)  # our own generated code
     weights = namespace["generate_weights"](panel)
+    if membership is not None:
+        # Dynamic universe: zero out non-members (the freed weight sits in
+        # cash rather than renormalizing — honest about reduced exposure).
+        mask = membership.reindex(index=weights.index, columns=weights.columns, fill_value=False)
+        weights = weights.where(mask, 0.0)
 
     closes = pd.DataFrame({t: p["close"] for t, p in panel.items()}).sort_index()
     rets = closes.pct_change().fillna(0)

@@ -223,6 +223,14 @@ Shared 1:1 with the AutoQuant engine's prebuilt universes (`engine/loop/universe
 
 Manual universes skip the tag: `universe $AAPL $MSFT $NVDA` or, for one ticker, inline scoping (`when $NVDA at [lower_bollinger]`).
 
+### Dynamic universes
+
+| Tag | Params | Meaning |
+|---|---|---|
+| `[top_volume N]` | count (required, 1-500), period=20 | The N tickers with the highest trailing period-bar average dollar volume. Membership recomputes on the first bar of each month using values as of the PRIOR bar — a mid-month volume explosion cannot repaint membership until the next monthly recompute. Bars before the first valid ranking have no members (warmup). |
+
+Dynamic universes rank tickers against each other, so the local backtester requires a multi-ticker data file (a `ticker` column); signals and weights are zeroed outside each ticker's membership windows, with freed weight sitting in cash. JSON: `{"type": "dynamic", "key": "top_volume", "params": {"count": 50, "period": 20}}`.
+
 ---
 
 ## Adding a tag (the process, so we never fork semantics)

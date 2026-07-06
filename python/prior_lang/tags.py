@@ -43,6 +43,12 @@ def _p(name, kind, default=None, required=False):
 
 UNIVERSE_KEYS = ["sp_top_30", "mega_tech", "etf_sectors", "big_banks", "semis", "crypto_majors"]
 
+# Dynamic universes: membership computed from data at run time instead of
+# a fixed list. No-lookahead law: membership recomputes on the first bar
+# of each month from trailing average dollar volume as of the PRIOR bar,
+# and holds until the next recompute.
+DYNAMIC_UNIVERSE_KEYS = {"top_volume"}
+
 # Prebuilt universe contents, mirroring the reference runner's lists (and
 # the table in spec/TAGS.md — the three must move together). Used by the
 # local backtester to filter multi-ticker data files.
@@ -324,6 +330,12 @@ _register(TagSpec(
 
 for key in UNIVERSE_KEYS:
     _register(TagSpec(name=key, kind="universe", usage="n/a"))
+
+_register(TagSpec(
+    name="top_volume", kind="universe", usage="n/a",
+    positional=[_p("count", NUMBER, required=True)],
+    named={"period": _p("period", NUMBER, 20)},
+))
 
 
 def names_of_kind(kind: str) -> list[str]:

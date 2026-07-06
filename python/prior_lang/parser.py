@@ -109,12 +109,21 @@ class Program:
     def _metric_json(self, tag: TagNode) -> dict:
         return {"name": tag.name, "params": {k: v for k, v in tag.params.items()}}
 
+    def _universe_json(self) -> dict:
+        from .tags import DYNAMIC_UNIVERSE_KEYS
+        if self.universe_tag is not None:
+            if self.universe_tag.name in DYNAMIC_UNIVERSE_KEYS:
+                return {"type": "dynamic", "key": self.universe_tag.name,
+                        "params": {"count": int(self.universe_tag.params["count"]),
+                                   "period": int(self.universe_tag.params.get("period", 20))}}
+            return {"type": "prebuilt", "key": self.universe_tag.name}
+        if self.universe_tickers:
+            return {"type": "manual", "tickers": list(self.universe_tickers)}
+        return {"type": "manual", "tickers": [self.scoped_ticker]}
+
     def to_json(self) -> dict:
         if self.opt_form is not None:
-            if self.universe_tag is not None:
-                universe = {"type": "prebuilt", "key": self.universe_tag.name}
-            else:
-                universe = {"type": "manual", "tickers": list(self.universe_tickers) or [self.scoped_ticker]}
+            universe = self._universe_json()
             mgmt: dict = {}
             for t in self.mgmt_close_terms:
                 if t.name == "profit":
@@ -163,10 +172,7 @@ class Program:
             return out
 
         if self.rank_select is not None:
-            if self.universe_tag is not None:
-                universe = {"type": "prebuilt", "key": self.universe_tag.name}
-            else:
-                universe = {"type": "manual", "tickers": list(self.universe_tickers)}
+            universe = self._universe_json()
             ranking = {
                 "select": self.rank_select,
                 "count": self.rank_count,
@@ -214,12 +220,7 @@ class Program:
         breakeven = exit_spec["breakeven_trigger_pct"]
         hold = exit_spec["hold_bars"]
 
-        if self.universe_tag is not None:
-            universe = {"type": "prebuilt", "key": self.universe_tag.name}
-        elif self.universe_tickers:
-            universe = {"type": "manual", "tickers": list(self.universe_tickers)}
-        else:
-            universe = {"type": "manual", "tickers": [self.scoped_ticker]}
+        universe = self._universe_json()
 
         sizing = None
         if self.sizing is not None:
@@ -986,6 +987,14 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
                 if tag.spec is None or tag.spec.kind != "universe":
                     cur.err(f"[{tag.name}] is not a universe", tok=head,
                             suggestion=_did_you_mean(tag.name, [n for n, s in TAGS.items() if s.kind == "universe"]))
+                if tag.name == "top_volume":
+                    count = tag.params.get("count")
+                    if count is None or not float(count).is_integer() or not 1 <= int(count) <= 500:
+                        cur.err("[top_volume N] takes a whole number of tickers between 1 and 500",
+                                tok=head, suggestion="try universe [top_volume 50]")
+                    period = tag.params.get("period", 20)
+                    if not float(period).is_integer() or not 2 <= int(period) <= 252:
+                        cur.err("[top_volume] period is a whole number of bars between 2 and 252", tok=head)
                 prog.universe_tag = tag
             else:
                 while not cur.at_end():

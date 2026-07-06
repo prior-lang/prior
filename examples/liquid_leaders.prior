@@ -1,0 +1,13 @@
+# A universe that picks itself: [top_volume 50] is whatever fifty
+# tickers in your data carry the most dollar volume, recomputed monthly
+# from CLOSED bars only — a mid-month volume spike can't sneak a ticker
+# in until the next rebalance. From those fifty, hold the five with the
+# strongest six-month momentum that are still above their 200-day line.
+
+strategy "Liquid Momentum Leaders"
+
+universe [top_volume 50]
+rebalance monthly
+
+hold top 5 by [momentum 126]
+  where price above [sma 200]

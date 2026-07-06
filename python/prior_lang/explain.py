@@ -172,6 +172,13 @@ def explain_strategy(strategy: dict) -> str:
     if uni.get("type") == "prebuilt":
         label = _UNIVERSE_LABELS.get(uni.get("key"), uni.get("key"))
         lines.append(f"Trades {label} on {strategy.get('timeframe', '1d')} bars.")
+    elif uni.get("type") == "dynamic":
+        p = uni.get("params", {}) or {}
+        lines.append(
+            f"Trades the {_num(p.get('count', 50))} highest-dollar-volume tickers in the data "
+            f"({_num(p.get('period', 20))}-bar average, membership recomputed monthly on closed "
+            f"bars only) on {strategy.get('timeframe', '1d')} bars."
+        )
     else:
         tickers = ", ".join(uni.get("tickers", []))
         lines.append(f"Trades {tickers} on {strategy.get('timeframe', '1d')} bars.")

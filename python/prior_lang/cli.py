@@ -181,6 +181,13 @@ def _cmd_backtest(args) -> int:
         )
         return 0
 
+    if (strategy.get("universe") or {}).get("type") == "dynamic":
+        raise SystemExit(
+            "a dynamic universe like [top_volume] ranks tickers against each other — "
+            "it needs a multi-ticker data file (add a ticker column, one stacked set "
+            "of rows per ticker)"
+        )
+
     result = run_backtest(strategy, df)
     print(f"{name} — {result['bars']} bars from {args.data}")
     rows = [

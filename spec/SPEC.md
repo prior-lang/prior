@@ -57,6 +57,7 @@ statement      = strategy_stmt | universe_stmt | timeframe_stmt
 
 strategy_stmt  = "strategy" , STRING ;
 universe_stmt  = "universe" , ( tag | TICKER , { TICKER } ) ;
+                 (* the tag is a prebuilt list ([sp_top_30]) or dynamic ([top_volume 50]) *)
 timeframe_stmt = "timeframe" , TIMEFRAME ;
 
 entry_stmt     = ( "when" | "if" ) , expr , action ;
@@ -141,7 +142,7 @@ Every tag has exactly one kind. The kind table lives in `TAGS.md` and is machine
 | `sizing` | after `buy`, exactly one | `[5% portfolio]`, `[$10000]`, `[risk 1%]` |
 | `exit` | exit expr, `or`-combined | `[stop 1.5%]`, `[after 5 bars]` |
 | `risk` | `risk` statement | `[max_positions 5]`, `[daily_loss $500]` |
-| `universe` | `universe` statement | `[sp_top_30]`, `[semis]` |
+| `universe` | `universe` statement | `[sp_top_30]`, `[semis]`, `[top_volume 50]` (dynamic: membership computed from data, monthly, closed bars only) |
 
 Kind-check errors name both the tag's kind and the expected kind: *"line 7: [stop 1.5%] is an exit tag; the entry rule takes condition tags. Did you mean to put it in the sell rule?"*
 

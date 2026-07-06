@@ -21,7 +21,7 @@ def test_example_parses_and_compiles(path):
         assert strategy["ranking"]["metric"]["name"]
     else:
         assert strategy["entry"]["conditions"]
-    assert strategy["universe"]["type"] in ("prebuilt", "manual")
+    assert strategy["universe"]["type"] in ("prebuilt", "manual", "dynamic")
 
 
 @pytest.mark.parametrize("path", EXAMPLES, ids=[p.stem for p in EXAMPLES])
@@ -32,7 +32,7 @@ def test_example_formats_idempotently(path):
 
 
 def test_examples_exist():
-    assert len(EXAMPLES) == 21
+    assert len(EXAMPLES) == 22
 
 
 def test_bollinger_reversal_compiles_exactly():

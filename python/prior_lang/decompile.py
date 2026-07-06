@@ -227,6 +227,8 @@ def strategy_to_source(strategy: dict) -> str:
     uni = strategy.get("universe", {}) or {}
     if uni.get("type") == "prebuilt":
         prog.universe_tag = _tag(uni["key"])
+    elif uni.get("type") == "dynamic":
+        prog.universe_tag = _metric_tag({"name": uni["key"], "params": uni.get("params", {})})
     elif uni.get("tickers"):
         prog.universe_tickers = [str(t).upper() for t in uni["tickers"]]
 
