@@ -15,9 +15,10 @@ from .errors import PriorError
 
 KEYWORDS = {
     "strategy", "universe", "timeframe", "when", "if", "buy", "sell", "risk",
+    "short", "cover",
     "and", "or", "at", "above", "below", "crosses", "price", "volume",
 }
-RESERVED = {"short", "cover", "on"}
+RESERVED = {"on"}
 
 _TIMEFRAME_RE = re.compile(r"\d+[mhdw]\b")
 _NUMBER_RE = re.compile(r"\d+(\.\d+)?")
@@ -156,7 +157,7 @@ def tokenize(source: str) -> list[LogicalLine]:
         if not toks:
             continue
         first = toks[0]
-        is_continuation = first.kind == "keyword" and first.value in ("and", "or", "buy")
+        is_continuation = first.kind == "keyword" and first.value in ("and", "or", "buy", "short")
         if is_continuation:
             if not logical:
                 raise PriorError(

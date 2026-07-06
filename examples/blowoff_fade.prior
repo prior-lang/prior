@@ -1,0 +1,17 @@
+# The short side of mean reversion: price stretched two and a half
+# standard deviations above its base with RSI past 80 is exuberance, not
+# strength. Fade it, risk a fixed slice of equity, and let the recross of
+# RSI 60 say when the froth has cooled. For a short, the stop sits ABOVE
+# entry and the trailing watermark tracks the low.
+
+strategy "Blowoff Fade"
+
+universe [mega_tech]
+timeframe 1d
+
+when price at [upper_bollinger std=2.5] and [rsi] > 80
+  short [risk 1%]
+
+cover when [rsi] crosses below 60
+  or [stop 3%]
+  or [after 10 bars]

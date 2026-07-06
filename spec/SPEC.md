@@ -1,8 +1,8 @@
-# PRIOR Language Specification — v0.1 (draft)
+# PRIOR Language Specification — v0.2 (draft)
 
 **PRIOR** — Portable Rules for Indicators, Orders & Risk. A declarative language for expressing trading strategies as testable hypotheses. This spec is the source of truth for the parser, formatter, and compiler. Pre-1.0, breakable with notice.
 
-Status: Phase A draft, 2026-07-05. Companion documents: `TAGS.md` (tag reference), `../examples/*.prior` (the executable spec — every example must parse, format canonically, and compile).
+Status: draft. v0.2 (2026-07-06) adds short strategies (short/cover). v0.1 drafted 2026-07-05. Companion documents: `TAGS.md` (tag reference), `../examples/*.prior` (the executable spec — every example must parse, format canonically, and compile).
 
 ---
 
@@ -22,7 +22,7 @@ These are not stylistic preferences. Violating any of them is a spec bug.
 
 - **Encoding:** UTF-8. Line-oriented.
 - **Comments:** `#` to end of line. Preserved by `prior fmt` (attached to the following statement).
-- **Logical lines:** A newline ends a statement, EXCEPT a line whose first token is `and`, `or`, or `buy` continues the previous logical line. Indentation is cosmetic; `prior fmt` indents continuations two spaces.
+- **Logical lines:** A newline ends a statement, EXCEPT a line whose first token is `and`, `or`, `buy`, or `short` continues the previous logical line. Indentation is cosmetic; `prior fmt` indents continuations two spaces.
 - **Case:** Keywords and tag names are case-insensitive on input. `prior fmt` normalizes both to lowercase. Ticker symbols are uppercased.
 
 ### Tokens
@@ -40,9 +40,9 @@ These are not stylistic preferences. Violating any of them is a spec bug.
 
 ### Keywords
 
-`strategy` `universe` `timeframe` `when` `if` `buy` `sell` `risk` `and` `or` `at` `above` `below` `crosses` `price` `volume`
+`strategy` `universe` `timeframe` `when` `if` `buy` `short` `sell` `cover` `risk` `and` `or` `at` `above` `below` `crosses` `price` `volume`
 
-Reserved for future versions (parse as keywords, compile error with a friendly "coming in vX" message): `short` `cover` `on`.
+Reserved for future versions: `on` (multi-timeframe).
 
 ---
 
@@ -60,9 +60,9 @@ universe_stmt  = "universe" , ( tag | TICKER , { TICKER } ) ;
 timeframe_stmt = "timeframe" , TIMEFRAME ;
 
 entry_stmt     = ( "when" | "if" ) , expr , action ;
-action         = "buy" , tag ;                      (* sizing tag, required *)
+action         = ( "buy" | "short" ) , tag ;        (* sizing tag, required *)
 
-exit_stmt      = "sell" , [ "when" ] , expr ;
+exit_stmt      = ( "sell" | "cover" ) , [ "when" ] , expr ;
 
 risk_stmt      = "risk" , tag , { tag } ;
 
@@ -100,8 +100,8 @@ A v0.1 program has at most one of each: `strategy`, `universe`, `timeframe`, ent
 | `strategy "Name"` | no | filename, title-cased |
 | `universe ...` | no* | *required unless the entry/exit rules use inline `$TICKER` scoping |
 | `timeframe TF` | no | `1d` |
-| `when <expr> buy <sizing-tag>` | **yes** | — |
-| `sell [when] <expr>` | **yes** | — |
+| `when <expr> buy|short <sizing-tag>` | **yes** | — |
+| `sell|cover [when] <expr>` | **yes** | — |
 | `risk [tag]...` | no | engine defaults |
 
 ### Entry (`when` / `if`)
@@ -142,6 +142,7 @@ Cross-statement checks:
 
 ## 6. Evaluation semantics
 
+- **Direction.** A strategy is long (`buy` … `sell`) or short (`short` … `cover`), one direction per strategy in v0.2; the pairing is enforced (`buy` with `cover` is a compile error that teaches the vocabulary). Short signals are 0/-1. Exit tags are direction-relative: a short's `[stop]` sits above entry, its `[target]` below, and `[trailing]` trails the low-water mark. Condition tags are direction-neutral predicates and never change meaning.
 - **Bar-close evaluation.** All conditions are evaluated on completed bars. There is no intrabar evaluation in v0.1 backtests. (Live/paper runners may place broker-side bracket orders for stops/targets that fill intrabar; this backtest-vs-live divergence is documented behavior, not a bug — backtests are conservative.)
 - **Edge-triggered entry.** The entry fires on the bar where the combined condition transitions false→true, matching the scanner/codegen pattern (`entries = cond & ~cond.shift(1)`). A condition that stays true for 10 bars produces one entry, not ten.
 - **Warmup.** Indicator NaN periods evaluate to false. Never an exception, never a fill.

@@ -124,19 +124,22 @@ def run_backtest(strategy: dict, df) -> dict:
     strat_returns = position * bar_returns
     equity = (1 + strat_returns).cumprod()
 
-    # Trades: rising/falling edges of the signal; open trade closes at end.
+    # Trades: edges of the signal (+1 long, -1 short); open trade closes at
+    # the last bar. Short PnL is the mirrored price move.
     sig = signals.to_numpy()
     closes = close.to_numpy()
     trades = []
     entry_i = None
+    entry_dir = 0
     for i in range(len(sig)):
-        if sig[i] == 1 and (i == 0 or sig[i - 1] == 0):
+        if sig[i] != 0 and (i == 0 or sig[i - 1] == 0):
             entry_i = i
-        elif sig[i] == 0 and i > 0 and sig[i - 1] == 1 and entry_i is not None:
-            trades.append(closes[i] / closes[entry_i] - 1)
+            entry_dir = int(sig[i])
+        elif sig[i] == 0 and i > 0 and sig[i - 1] != 0 and entry_i is not None:
+            trades.append(entry_dir * (closes[i] / closes[entry_i] - 1))
             entry_i = None
     if entry_i is not None:
-        trades.append(closes[-1] / closes[entry_i] - 1)
+        trades.append(entry_dir * (closes[-1] / closes[entry_i] - 1))
 
     total_return = float(equity.iloc[-1] - 1)
     years = max(len(df) / 252.0, 1e-9)

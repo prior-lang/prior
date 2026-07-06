@@ -250,15 +250,34 @@ def generate_strategy_code(
     stop_loss_pct: float | None = None,
     profit_target_pct: float | None = None,
     trailing_stop_pct: float | None = None,
+    direction: str = "long",
     position_sizing: Dict[str, Any] | None = None,
     risk: Dict[str, Any] | None = None,
 ) -> str:
-    """Build the strategy code string. See module docstring for semantics."""
+    """Build the strategy code string.
+
+    Args mirror the strategy JSON: entry conditions + match logic, exit
+    rules (priced, conditional, time), direction ("long" emits 0/1
+    signals, "short" emits 0/-1 with stop/target/trailing mirrored around
+    entry and the trailing watermark tracking the low), and sizing/risk
+    metadata embedded as module-level constants.
+
+    Exit precedence within a bar (see prior/spec SPEC.md section 6):
+    stop -> target -> trailing -> condition exits -> hold_bars. Bar-close
+    evaluation; entries fire on the rising edge of the combined condition.
+
+    When only hold_bars is used with direction="long" (the scanner's
+    promote path), the emitted code is byte-stable with pre-Phase-B
+    output so existing promoted strategies regenerate identically.
+    """
     if not conditions:
         raise ValueError("At least one condition is required")
+    if direction not in ("long", "short"):
+        raise ValueError(f"direction must be 'long' or 'short', got {direction!r}")
 
     entry_body, entry_expr = _condition_blocks(conditions, match_logic, "cond")
     hold = int(max(1, hold_bars))
+    is_short = direction == "short"
 
     has_priced_exits = any(
         v is not None for v in (stop_loss_pct, profit_target_pct, trailing_stop_pct)
@@ -274,17 +293,23 @@ def generate_strategy_code(
         metadata += "\n\n"
 
     if not has_priced_exits and not has_cond_exits:
+        hold_phrase = f"stays short for {hold} bars" if is_short else f"holds for {hold} bars"
+        signals_expr = (
+            "entries.astype(int).rolling(%d, min_periods=1).max().fillna(0).astype(int)" % hold
+        )
+        if is_short:
+            signals_expr = "(%s * -1)" % signals_expr
         return f'''{metadata}def generate_signals(df):
     """Auto-generated strategy. Mirrors {len(conditions)} condition(s)
     combined with {match_logic.upper()}. Enters on the rising edge of the
-    combined match and holds for {hold} bars."""
+    combined match and {hold_phrase}."""
     close = df["close"]
 
 {entry_body}
 
     combined = ({entry_expr}).fillna(False)
     entries = combined & ~combined.shift(1).fillna(False)
-    signals = entries.astype(int).rolling({hold}, min_periods=1).max().fillna(0).astype(int)
+    signals = {signals_expr}
     return signals
 '''
 
@@ -313,9 +338,24 @@ def generate_strategy_code(
     exit_desc_parts.append(f"max {hold} bars")
     exit_desc = ", ".join(exit_desc_parts)
 
+    if is_short:
+        sig_val = "-1"
+        wm_cmp = "<"
+        stop_expr = f"px >= entry_px * (1 + {stop} / 100.0)"
+        target_expr = f"px <= entry_px * (1 - {target} / 100.0)"
+        trail_expr = f"px >= hwm * (1 + {trail} / 100.0)"
+        enter_phrase = "Enters short on the rising edge"
+    else:
+        sig_val = "1"
+        wm_cmp = ">"
+        stop_expr = f"px <= entry_px * (1 - {stop} / 100.0)"
+        target_expr = f"px >= entry_px * (1 + {target} / 100.0)"
+        trail_expr = f"px <= hwm * (1 - {trail} / 100.0)"
+        enter_phrase = "Enters on the rising edge"
+
     return f'''{metadata}def generate_signals(df):
     """Auto-generated strategy. Mirrors {len(conditions)} entry
-    condition(s) combined with {match_logic.upper()}. Enters on the rising edge;
+    condition(s) combined with {match_logic.upper()}. {enter_phrase};
     exits on first of: {exit_desc}. Bar-close evaluation; exit precedence
     stop -> target -> trailing -> conditions -> time."""
     close = df["close"]
@@ -342,18 +382,18 @@ def generate_strategy_code(
                 entry_px = close_arr[i]
                 hwm = close_arr[i]
                 bars_held = 0
-                sig[i] = 1
+                sig[i] = {sig_val}
             continue
         bars_held += 1
         px = close_arr[i]
-        if px > hwm:
+        if px {wm_cmp} hwm:
             hwm = px
         exit_now = False
-        if {stop} > 0 and px <= entry_px * (1 - {stop} / 100.0):
+        if {stop} > 0 and {stop_expr}:
             exit_now = True
-        elif {target} > 0 and px >= entry_px * (1 + {target} / 100.0):
+        elif {target} > 0 and {target_expr}:
             exit_now = True
-        elif {trail} > 0 and px <= hwm * (1 - {trail} / 100.0):
+        elif {trail} > 0 and {trail_expr}:
             exit_now = True
         elif exit_arr[i]:
             exit_now = True
@@ -363,10 +403,9 @@ def generate_strategy_code(
             in_pos = False
             sig[i] = 0
         else:
-            sig[i] = 1
+            sig[i] = {sig_val}
     return pd.Series(sig, index=df.index)
 '''
-
 
 def compile_strategy(strategy: Dict[str, Any]) -> str:
     """Strategy JSON (the parser's output) → Python source string."""
@@ -375,6 +414,7 @@ def compile_strategy(strategy: Dict[str, Any]) -> str:
     return generate_strategy_code(
         conditions=[{"type": c["condition"], "params": c.get("params", {})} for c in entry["conditions"]],
         match_logic=entry.get("match_logic", "all"),
+        direction=strategy.get("direction", "long"),
         hold_bars=exit_rule.get("hold_bars") or DEFAULT_HOLD_BARS,
         exit_conditions=[
             {"type": c["condition"], "params": c.get("params", {})}

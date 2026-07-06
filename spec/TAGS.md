@@ -127,7 +127,7 @@ Position sized so that if the stop is hit, the loss equals N% of equity: `size =
 | `[trailing N%]` | percent, required | exit if price falls N% from its high-water mark since entry | *"trailing stop {N}% off the high"* |
 | `[after N bars]` | number + `bars`, required | exit at the close of the Nth bar after entry | *"exit after {N} bars"* |
 
-v0.1 evaluation is bar-close (SPEC §6); precedence within a bar: stop → target → trailing → condition exits → after.
+Evaluation is bar-close (SPEC §6); precedence within a bar: stop → target → trailing → condition exits → after. Exit tags are direction-relative: in a short strategy, `[stop]` is the price rising N% above entry, `[target]` is it falling N% below, and `[trailing]` trails the low-water mark upward.
 
 ---
 

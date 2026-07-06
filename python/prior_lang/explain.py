@@ -76,18 +76,20 @@ def _condition_text(cond: dict) -> str:
     return name
 
 
-def _sizing_text(sizing: dict | None) -> str:
+def _sizing_text(sizing: dict | None, direction: str = "long") -> str:
+    verb = "Sell short" if direction == "short" else "Buy"
     if not sizing:
-        return "Buy"
+        return verb
     method = sizing.get("method")
     v = sizing.get("value", 0)
     if method == "percent_of_portfolio":
-        return f"Buy {_num(v * 100)}% of the portfolio"
+        return f"{verb} {_num(v * 100)}% of the portfolio"
     if method == "fixed_dollar":
-        return f"Buy ${_num(v)} worth"
+        return f"{verb} ${_num(v)} worth"
     if method == "risk_based":
-        return f"Size the position to risk {_num(v * 100)}% of equity at the stop"
-    return "Buy"
+        kind = "short" if direction == "short" else "position"
+        return f"Size the {kind} to risk {_num(v * 100)}% of equity at the stop"
+    return verb
 
 
 def explain_strategy(strategy: dict) -> str:
@@ -104,20 +106,25 @@ def explain_strategy(strategy: dict) -> str:
         tickers = ", ".join(uni.get("tickers", []))
         lines.append(f"Trades {tickers} on {strategy.get('timeframe', '1d')} bars.")
 
+    direction = strategy.get("direction", "long")
     entry = strategy["entry"]
     joiner = " and " if entry.get("match_logic", "all") == "all" else " or "
     conds = joiner.join(_condition_text(c) for c in entry["conditions"])
-    lines.append(f"{_sizing_text(strategy.get('position_sizing'))} when {conds}. "
+    lines.append(f"{_sizing_text(strategy.get('position_sizing'), direction)} when {conds}. "
                  "Entries trigger once per signal, on the bar the condition becomes true.")
 
     ex = strategy.get("exit", {}) or {}
     exits: list[str] = []
+    is_short = direction == "short"
     if ex.get("stop_loss_pct") is not None:
-        exits.append(f"a stop loss {_num(ex['stop_loss_pct'])}% below entry")
+        side = "above" if is_short else "below"
+        exits.append(f"a stop loss {_num(ex['stop_loss_pct'])}% {side} entry")
     if ex.get("profit_target_pct") is not None:
-        exits.append(f"a profit target {_num(ex['profit_target_pct'])}% above entry")
+        side = "below" if is_short else "above"
+        exits.append(f"a profit target {_num(ex['profit_target_pct'])}% {side} entry")
     if ex.get("trailing_stop_pct") is not None:
-        exits.append(f"a trailing stop {_num(ex['trailing_stop_pct'])}% off the high")
+        mark = "low" if is_short else "high"
+        exits.append(f"a trailing stop {_num(ex['trailing_stop_pct'])}% off the {mark}")
     for c in ex.get("conditions") or []:
         exits.append(_condition_text(c))
     if ex.get("hold_bars") is not None:

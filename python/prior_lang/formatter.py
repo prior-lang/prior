@@ -84,11 +84,13 @@ def format_program(prog: Program) -> str:
         blocks.append("\n".join(setup))
 
     joiner = " and " if prog.entry_logic == "all" else " or "
+    action = "short" if prog.direction == "short" else "buy"
     entry = "when " + joiner.join(_term(t) for t in prog.entry_terms)
-    entry += f"\n  buy {_tag(prog.sizing)}" if prog.sizing else ""
+    entry += f"\n  {action} {_tag(prog.sizing)}" if prog.sizing else ""
     blocks.append(entry)
 
-    exit_lines = [f"sell when {_term(prog.exit_terms[0])}"]
+    exit_kw = "cover" if prog.direction == "short" else "sell"
+    exit_lines = [f"{exit_kw} when {_term(prog.exit_terms[0])}"]
     for t in prog.exit_terms[1:]:
         exit_lines.append(f"  or {_term(t)}")
     blocks.append("\n".join(exit_lines))

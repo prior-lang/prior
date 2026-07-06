@@ -105,9 +105,33 @@ def test_bare_operand_tag_needs_comparison():
     assert "[rsi] < 30" in (e.suggestion or "")
 
 
-def test_reserved_short_keyword():
-    e = _err("short [5% portfolio]")
-    assert "v1.1" in e.message
+def test_short_strategy_compiles():
+    s = prior_lang.compile_source(
+        "universe [mega_tech]\n"
+        "when [rsi] > 80\n"
+        "  short [5% portfolio]\n"
+        "cover when [rsi] crosses below 60\n"
+        "  or [stop 3%]\n"
+    )
+    assert s["direction"] == "short"
+    assert s["exit"]["stop_loss_pct"] == 3.0
+    # And it round-trips through fmt
+    out = prior_lang.format_source(
+        "universe [mega_tech]\nwhen [rsi] > 80\n  short [5% portfolio]\ncover when [stop 3%]\n"
+    )
+    assert "short [5% portfolio]" in out
+    assert out.strip().splitlines()[-1].startswith("cover when")
+
+
+def test_direction_exit_keyword_pairing():
+    e = _err(
+        "universe [mega_tech]\nwhen [rsi] > 80\n  short [5% portfolio]\nsell when [stop 3%]\n"
+    )
+    assert "cover" in e.message
+    e = _err(
+        "universe [mega_tech]\nwhen [rsi] < 20\n  buy [5% portfolio]\ncover when [stop 3%]\n"
+    )
+    assert "sell" in e.message
 
 
 def test_second_entry_rule_rejected():

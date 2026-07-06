@@ -96,6 +96,8 @@ def strategy_to_source(strategy: dict) -> str:
     """Render strategy JSON as canonical .prior text."""
     prog = Program()
     prog.name = strategy.get("name")
+    prog.direction = strategy.get("direction", "long")
+    prog.exit_keyword = "cover" if prog.direction == "short" else "sell"
 
     uni = strategy.get("universe", {}) or {}
     if uni.get("type") == "prebuilt":

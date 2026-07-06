@@ -18,7 +18,7 @@ from .errors import PriorError
 from .lexer import LogicalLine, Token, tokenize
 from .tags import DOLLAR, MULT, NUMBER, PERCENT, TAGS, WORD, TagSpec
 
-VERSION = "0.1"
+VERSION = "0.2"
 
 _BOLLINGER = {"lower_bollinger": "lower", "middle_bollinger": "middle", "upper_bollinger": "upper"}
 _PREDICATE_MAP = {
@@ -69,9 +69,11 @@ class Program:
     timeframe: str | None = None
     entry_logic: str = "all"
     entry_terms: list = field(default_factory=list)
+    direction: str = "long"          # long (buy/sell) | short (short/cover)
     sizing: TagNode | None = None
     exit_terms: list = field(default_factory=list)   # Comparison/Predicate/TagNode(exit)
     risk_tags: list[TagNode] = field(default_factory=list)
+    exit_keyword: str = "sell"
     scoped_ticker: str | None = None
     source_name: str = "<string>"
 
@@ -121,6 +123,7 @@ class Program:
         out = {
             "version": VERSION,
             "name": self.name,
+            "direction": self.direction,
             "universe": universe,
             "timeframe": self.timeframe or "1d",
             "entry": {"match_logic": self.entry_logic, "conditions": entry_conditions},
@@ -511,7 +514,7 @@ def _parse_term(cur: _Cursor):
     return Comparison(left=left, cmp=cmp, right=right, line=line)
 
 
-def _parse_expr(cur: _Cursor, stop_at_buy: bool = False):
+def _parse_expr(cur: _Cursor, stop_at_action: bool = False):
     """Parse an and/or expression into ('all'|'any'|None, [terms])."""
     def and_chain():
         items = [term_node()]
@@ -529,7 +532,7 @@ def _parse_expr(cur: _Cursor, stop_at_buy: bool = False):
     logic, items = and_chain()
     while True:
         tok = cur.peek()
-        if stop_at_buy and tok is not None and tok.kind == "keyword" and tok.value == "buy":
+        if stop_at_action and tok is not None and tok.kind == "keyword" and tok.value in ("buy", "short"):
             break
         if tok is not None and tok.kind == "keyword" and tok.value == "or":
             cur.next()
@@ -573,9 +576,6 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
         cur = _Cursor(ll)
         head = cur.next()
 
-        if head.kind == "word" and head.value in ("short", "cover"):
-            cur.err("short entries are coming in v1.1 — the syntax is reserved", tok=head)
-
         if head.kind != "keyword":
             cur.err(
                 f"a statement starts with strategy, universe, timeframe, when, sell, or risk — got {head.raw!r}",
@@ -583,8 +583,11 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
             )
 
         kw = head.value
-        if kw in seen and kw in ("strategy", "universe", "timeframe", "when", "if", "sell", "risk"):
-            label = "entry (when)" if kw in ("when", "if") else kw
+        if kw in ("buy",):
+            cur.err("buy belongs to an entry rule", tok=head,
+                    suggestion="when <condition> buy [sizing]")
+        if kw in seen and kw in ("strategy", "universe", "timeframe", "when", "if", "sell", "cover", "risk"):
+            label = "entry (when)" if kw in ("when", "if") else ("exit (sell/cover)" if kw in ("sell", "cover") else kw)
             cur.err(f"more than one {label} statement — multiple rules are coming in v1.1", tok=head)
 
         if kw == "strategy":
@@ -620,31 +623,33 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
             seen.add("timeframe")
 
         elif kw in ("when", "if"):
-            node = _parse_expr(cur, stop_at_buy=True)
+            node = _parse_expr(cur, stop_at_action=True)
             logic, terms = _flatten(node, cur)
             prog.entry_logic = logic or "all"
             prog.entry_terms = terms
             buy = cur.peek()
-            if buy is None or not (buy.kind == "keyword" and buy.value == "buy"):
-                cur.err("the entry rule ends with: buy [sizing]",
+            if buy is None or not (buy.kind == "keyword" and buy.value in ("buy", "short")):
+                cur.err("the entry rule ends with an action: buy [sizing] or short [sizing]",
                         suggestion="e.g. buy [10% portfolio]")
             cur.next()
+            prog.direction = "long" if buy.value == "buy" else "short"
             size_tok = cur.peek()
             if size_tok is None or size_tok.kind != "lbrack":
-                cur.err("buy needs a sizing tag", tok=buy,
-                        suggestion="e.g. buy [10% portfolio], buy [$10000], buy [risk 1%]")
+                cur.err(f"{buy.value} needs a sizing tag", tok=buy,
+                        suggestion=f"e.g. {buy.value} [10% portfolio], {buy.value} [$10000], {buy.value} [risk 1%]")
             tag = _parse_tag(cur)
             if tag.name not in ("__pct_portfolio__", "__dollar__", "risk"):
                 kindname = tag.spec.kind if tag.spec else "unknown"
-                cur.err(f"[{tag.name}] is a {kindname} tag; buy takes a sizing tag", tok=buy,
-                        suggestion="e.g. buy [10% portfolio], buy [$10000], buy [risk 1%]")
+                cur.err(f"[{tag.name}] is a {kindname} tag; {buy.value} takes a sizing tag", tok=buy,
+                        suggestion=f"e.g. {buy.value} [10% portfolio]")
             prog.sizing = tag
             if not cur.at_end():
                 cur.err("nothing may follow the sizing tag on the entry rule")
             seen.add("when")
             seen.add("if")
 
-        elif kw == "sell":
+        elif kw in ("sell", "cover"):
+            prog.exit_keyword = kw
             tok = cur.peek()
             if tok is not None and tok.kind == "keyword" and tok.value == "when":
                 cur.next()
@@ -665,6 +670,7 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
             if not cur.at_end():
                 cur.err("unexpected trailing tokens after the exit rule")
             seen.add("sell")
+            seen.add("cover")
 
         elif kw == "risk":
             while not cur.at_end():
@@ -691,7 +697,12 @@ def _validate(prog: Program):
     if not prog.entry_terms:
         raise PriorError("the strategy has no entry rule — add: when <condition> buy [sizing]")
     if not prog.exit_terms:
-        raise PriorError("the strategy has no exit rule — add: sell when <condition or exit tags>")
+        exit_kw = "cover" if prog.direction == "short" else "sell"
+        raise PriorError(f"the strategy has no exit rule — add: {exit_kw} when <condition or exit tags>")
+    if prog.direction == "long" and prog.exit_keyword == "cover":
+        raise PriorError("long strategies exit with sell — cover closes a short")
+    if prog.direction == "short" and prog.exit_keyword == "sell":
+        raise PriorError("short strategies exit with cover — sell closes a long")
 
     # Inline ticker scoping vs universe statement
     tickers = set()
