@@ -52,6 +52,9 @@ def _operand(op) -> str:
             return f"${op[1]}"
         if op[0] == "number":
             return _num(op[1])
+        if op[0] == "spread":
+            legs = f"${op[1]}, ${op[2]}"
+            return f"spread({legs})" if op[3] == "ratio" else f"spread({legs}, {op[3]})"
         return op[0]  # price | volume
     return str(op)
 

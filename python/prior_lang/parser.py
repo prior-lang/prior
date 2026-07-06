@@ -104,6 +104,7 @@ class Program:
     mgmt_close_terms: list = field(default_factory=list)
     mgmt_roll_terms: list = field(default_factory=list)
     scoped_ticker: str | None = None
+    pair: tuple | None = None  # (ticker_a, ticker_b, "ratio"|"diff") from spread(...)
     source_name: str = "<string>"
 
     def _metric_json(self, tag: TagNode) -> dict:
@@ -111,6 +112,8 @@ class Program:
 
     def _universe_json(self) -> dict:
         from .tags import DYNAMIC_UNIVERSE_KEYS
+        if self.pair is not None:
+            return {"type": "pair", "tickers": [self.pair[0], self.pair[1]], "form": self.pair[2]}
         if self.universe_tag is not None:
             if self.universe_tag.name in DYNAMIC_UNIVERSE_KEYS:
                 return {"type": "dynamic", "key": self.universe_tag.name,
@@ -433,7 +436,14 @@ def _desugar_inner(term) -> dict:
     assert isinstance(term, Comparison)
     left, cmp, right = term.left, term.cmp, term.right
 
-    left_is_price = isinstance(left, tuple) and left[0] in ("price", "ticker")
+    # spread($A, $B) behaves exactly like price — every price comparison
+    # works on it; codegen computes the indicators ON the spread series.
+    left_is_price = isinstance(left, tuple) and left[0] in ("price", "ticker", "spread")
+    if isinstance(right, tuple) and right[0] == "spread":
+        raise PriorError(
+            "the spread goes on the left: spread($GLD, $GDX) at [lower_bollinger 60]",
+            line=term.line,
+        )
 
     if left_is_price and isinstance(right, TagNode):
         if right.name in _BOLLINGER:
@@ -831,6 +841,42 @@ def _kind_suggestion(tag: str, p) -> str:
     return f"e.g. [{tag} {examples.get(p.kind, '')}]"
 
 
+def _parse_spread(cur: _Cursor):
+    """spread ( $A , $B [, ratio|diff] ) — the pair-trading operand."""
+    head = cur.next()  # 'spread'
+    cur.next()  # '('
+    legs = []
+    for n in ("first", "second"):
+        tok = cur.peek()
+        if tok is None or tok.kind != "ticker":
+            cur.err(f"spread takes two tickers — the {n} leg is missing", tok=tok or head,
+                    suggestion="spread($GLD, $GDX)")
+        legs.append(cur.next().value)
+        tok = cur.peek()
+        if n == "first":
+            if tok is None or tok.kind != "comma":
+                cur.err("spread's legs are separated by a comma", tok=tok or head,
+                        suggestion="spread($GLD, $GDX)")
+            cur.next()
+    form = "ratio"
+    tok = cur.peek()
+    if tok is not None and tok.kind == "comma":
+        cur.next()
+        ftok = cur.peek()
+        if ftok is None or ftok.kind != "word" or ftok.value not in ("ratio", "diff"):
+            cur.err("spread's third argument is its form: ratio (default) or diff",
+                    tok=ftok or head, suggestion="spread($GLD, $GDX, diff)")
+        form = cur.next().value
+    tok = cur.peek()
+    if tok is None or tok.kind != "rparen":
+        cur.err("missing ')' to close spread(...)", tok=tok or head)
+    cur.next()
+    if legs[0] == legs[1]:
+        cur.err(f"a spread needs two different tickers — ${legs[0]} against itself is always "
+                + ("1" if form == "ratio" else "0"), tok=head)
+    return ("spread", legs[0], legs[1], form)
+
+
 def _parse_operand(cur: _Cursor):
     tok = cur.peek()
     if tok is None:
@@ -838,6 +884,10 @@ def _parse_operand(cur: _Cursor):
     if tok.kind == "keyword" and tok.value in ("price", "volume"):
         cur.next()
         return (tok.value,)
+    if tok.kind == "word" and tok.value == "spread":
+        nxt = cur.tokens[cur.i + 1] if cur.i + 1 < len(cur.tokens) else None
+        if nxt is not None and nxt.kind == "lparen":
+            return _parse_spread(cur)
     if tok.kind == "ticker":
         cur.next()
         return ("ticker", tok.value)
@@ -1282,6 +1332,8 @@ def _validate(prog: Program):
             )
         tickers = set()
         for t in prog.opt_entry_terms:
+            if isinstance(t, Comparison) and isinstance(t.left, tuple) and t.left[0] == "spread":
+                raise PriorError("spread(...) drives stock strategies — options on spreads aren't supported")
             if isinstance(t, Comparison) and isinstance(t.left, tuple) and t.left[0] == "ticker":
                 tickers.add(t.left[1])
         if len(tickers) > 1:
@@ -1313,6 +1365,9 @@ def _validate(prog: Program):
             )
         if prog.universe_tag is None and not prog.universe_tickers:
             raise PriorError("ranking strategies need a universe — add: universe [sp_top_30]")
+        for t in prog.rank_where_terms:
+            if isinstance(t, Comparison) and isinstance(t.left, tuple) and t.left[0] == "spread":
+                raise PriorError("spread(...) belongs in rules strategies (when/sell), not ranking filters")
         where_conds = [_desugar(t) for t in prog.rank_where_terms]
         _check_condition_timeframes(prog, where_conds)
         return
@@ -1349,12 +1404,57 @@ def _validate(prog: Program):
             prog.partial_terms = prog.partial_short_terms
             prog.partial_short_terms = []
 
-    # Inline ticker scoping vs universe statement
+    # Inline ticker scoping vs universe statement vs spread(...)
     tickers = set()
+    spreads = set()
+    uses_volume = False
     rule_terms = [t for r in prog.rules for t in r["terms"]] if prog.rules else list(prog.entry_terms)
-    for t in rule_terms + prog.exit_terms + prog.exit_short_terms + prog.partial_terms + prog.partial_short_terms:
+    all_terms = rule_terms + prog.exit_terms + prog.exit_short_terms + prog.partial_terms + prog.partial_short_terms
+    for t in all_terms:
         if isinstance(t, Comparison) and isinstance(t.left, tuple) and t.left[0] == "ticker":
             tickers.add(t.left[1])
+        if isinstance(t, Comparison) and isinstance(t.left, tuple) and t.left[0] == "spread":
+            spreads.add(t.left[1:])
+        if isinstance(t, Comparison) and any(
+            isinstance(x, tuple) and x == ("volume",) for x in (t.left, t.right)
+        ):
+            uses_volume = True
+
+    if spreads:
+        if len(spreads) > 1:
+            pretty = "; ".join(f"spread(${a}, ${b}, {f})" for a, b, f in sorted(spreads))
+            raise PriorError(f"one spread per strategy — found {pretty}")
+        if tickers:
+            raise PriorError("a spread strategy trades the pair — no other inline $TICKER rules alongside it")
+        if prog.universe_tag is not None or prog.universe_tickers:
+            raise PriorError("a spread names its own two tickers — drop the universe statement")
+        a, b, form = next(iter(spreads))
+        _PAIR_BANNED = {"volume_spike", "heavy_volume", "obv_rising", "vwap"}
+        for t in all_terms:
+            names = set()
+            if isinstance(t, Predicate):
+                names.add(t.tag.name)
+            elif isinstance(t, Comparison):
+                names.update(x.name for x in (t.left, t.right) if isinstance(x, TagNode))
+            banned = names & _PAIR_BANNED
+            if banned:
+                raise PriorError(
+                    f"[{sorted(banned)[0]}] needs volume, and a spread has none — "
+                    "price-based conditions only on spreads"
+                )
+        if uses_volume:
+            raise PriorError("a spread has no volume — price-based conditions only on spreads")
+        if form == "diff":
+            for t in prog.exit_terms + prog.exit_short_terms + prog.partial_terms + prog.partial_short_terms:
+                tag = t.tag if isinstance(t, Predicate) else t
+                if isinstance(tag, TagNode) and tag.name in ("stop", "target", "trailing") \
+                        and tag.params.get("unit") == "pct":
+                    raise PriorError(
+                        f"percent exits are undefined on a diff spread (it can cross zero) — "
+                        f"use ATR units: [{tag.name} 2 atr]"
+                    )
+        prog.pair = (a, b, form)
+
     if len(tickers) > 1:
         raise PriorError(
             f"v0.1 supports one inline ticker per strategy — found {', '.join('$' + s for s in sorted(tickers))}"
@@ -1366,7 +1466,7 @@ def _validate(prog: Program):
                 "per-ticker overrides inside a universe are coming later"
             )
         prog.scoped_ticker = tickers.pop()
-    elif prog.universe_tag is None and not prog.universe_tickers:
+    elif prog.universe_tag is None and not prog.universe_tickers and prog.pair is None:
         raise PriorError(
             "the strategy needs a universe — add: universe [sp_top_30] (or scope it inline: when $NVDA at ...)"
         )

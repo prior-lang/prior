@@ -73,7 +73,7 @@ data, hosted full-history backtests (`--cloud`).
 ```
 spec/SPEC.md         language specification (grammar, semantics, error contract)
 spec/TAGS.md         every tag: params, defaults, exact semantics, readback strings
-examples/*.prior     five complete strategies — the executable spec
+examples/*.prior     complete strategies, from one-liners to pairs trades — the executable spec
 python/prior_lang/   the reference implementation (zero-dependency parser + CLI)
 ```
 

@@ -102,7 +102,8 @@ def _cmd_backtest(args) -> int:
             "prior backtest needs bars: --data bars.csv (columns: date,open,high,low,close,volume)"
         )
     from .backtest import (  # lazy: needs pandas
-        load_bars, run_backtest, run_ranking_backtest, run_universe_backtest,
+        load_bars, run_backtest, run_pair_backtest, run_ranking_backtest,
+        run_universe_backtest,
     )
 
     strategy = _load_program(args.file).to_json()
@@ -114,6 +115,34 @@ def _cmd_backtest(args) -> int:
         )
     df = load_bars(args.data)
     name = strategy.get("name") or Path(args.file).stem
+
+    if (strategy.get("universe") or {}).get("type") == "pair":
+        if "ticker" not in df.columns:
+            raise SystemExit(
+                "a spread backtest needs both legs — the data file needs a "
+                "ticker column (one stacked set of rows per ticker)"
+            )
+        res = run_pair_backtest(strategy, df)
+        print(f"{name} — {res['form']} spread {res['pair']}, {res['bars']} bars from {args.data}")
+        rows = [
+            ("Total return", f"{res['total_return_pct']}%"),
+            ("CAGR", f"{res['cagr_pct']}%"),
+            ("Sharpe", res["sharpe"]),
+            ("Max drawdown", f"{res['max_drawdown_pct']}%"),
+            ("Spread start → end", f"{res['spread_start']} → {res['spread_end']}"),
+            ("Trades", res["trades"]),
+            ("Win rate", f"{res['win_rate_pct']}%" if res["win_rate_pct"] is not None else "n/a"),
+            ("Avg trade", f"{res['avg_trade_pct']}%" if res["avg_trade_pct"] is not None else "n/a"),
+        ]
+        width = max(len(k) for k, _ in rows)
+        for k, v in rows:
+            print(f"  {k:<{width}}  {v}")
+        print(
+            "\nNote: equal dollar legs (+1 spread = long "
+            f"{res['pair'].split('/')[0]} / short {res['pair'].split('/')[1]}, "
+            "each at half the allocation). Borrow costs and leg slippage are not modeled."
+        )
+        return 0
 
     if strategy.get("ranking"):
         if "ticker" not in df.columns:

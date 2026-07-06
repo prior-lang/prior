@@ -1,0 +1,13 @@
+# Pairs trading in six lines. spread($GLD, $GDX) is the ratio of gold
+# to gold miners — it behaves exactly like price, so every comparison
+# works on it. Buying the spread means long GLD / short GDX in equal
+# dollar legs (market exposure ~0); the trade is the RELATIONSHIP
+# reverting, not either ticker going up.
+
+strategy "Gold Miners Ratio"
+
+when spread($GLD, $GDX) at [lower_bollinger 60]
+  buy [10% portfolio]
+
+sell when spread($GLD, $GDX) at [middle_bollinger 60]
+  or [after 40 bars]

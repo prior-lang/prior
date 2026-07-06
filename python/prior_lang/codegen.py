@@ -1577,6 +1577,38 @@ def _find_cloud_only(strategy: Dict[str, Any]) -> list:
     return found
 
 
+def generate_pair_code(base_code: str, pair: Dict[str, Any]) -> str:
+    """Wrap single-instrument strategy code for a two-legged spread.
+
+    The base code's generate_signals(df) runs unchanged on a synthetic
+    frame whose close IS the spread series (open/high/low mirror it,
+    volume is 0), so every condition, exit, and partial works on the
+    spread. PAIR carries leg metadata for runners to translate a spread
+    position into two equal-dollar legs."""
+    a, b = [str(t).upper() for t in pair["tickers"]]
+    form = pair.get("form", "ratio")
+    expr = "leg_a / leg_b" if form == "ratio" else "leg_a - leg_b"
+    return base_code + f'''
+
+PAIR = ({a!r}, {b!r}, {form!r})
+
+
+def generate_pair_signals(panel):
+    """Signals on the {form} spread {a}/{b}. A +1 spread position means
+    long {a} / short {b} in equal dollar legs; -1 mirrors; 0 is flat
+    both legs."""
+    leg_a = panel[{a!r}]["close"].astype(float)
+    leg_b = panel[{b!r}]["close"].astype(float)
+    leg_a, leg_b = leg_a.align(leg_b, join="inner")
+    spread = ({expr}).dropna()
+    df = pd.DataFrame({{
+        "open": spread, "high": spread, "low": spread,
+        "close": spread, "volume": 0.0,
+    }})
+    return generate_signals(df)
+'''
+
+
 def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False) -> str:
     """Strategy JSON (the parser's output) → Python source string.
 
@@ -1604,12 +1636,18 @@ def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False) -> str
     if strategy.get("options"):
         return generate_options_code(strategy["options"], risk=strategy.get("risk"))
 
+    uni = strategy.get("universe") or {}
+    pair = uni if uni.get("type") == "pair" else None
+
+    def _wrap(code: str) -> str:
+        return generate_pair_code(code, pair) if pair else code
+
     if strategy.get("exits"):  # long+short strategy
         ex_l = dict(strategy["exits"]["long"])
         ex_s = dict(strategy["exits"]["short"])
         ex_l["conditions"] = _conds(ex_l.get("conditions"))
         ex_s["conditions"] = _conds(ex_s.get("conditions"))
-        return generate_mixed_code(
+        return _wrap(generate_mixed_code(
             rules=[
                 {
                     "direction": r.get("direction", "long"),
@@ -1627,7 +1665,7 @@ def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False) -> str
             partial_short=strategy.get("partial_exit_short"),
             position_sizing=strategy.get("position_sizing"),
             risk=strategy.get("risk"),
-        )
+        ))
 
     ranking = strategy.get("ranking")
     if ranking:
@@ -1650,7 +1688,7 @@ def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False) -> str
 
     entry = strategy["entry"]
     exit_rule = strategy.get("exit", {}) or {}
-    return generate_strategy_code(
+    return _wrap(generate_strategy_code(
         conditions=[
             {"type": c["condition"], "params": c.get("params", {}),
              **({"timeframe": c["timeframe"]} if c.get("timeframe") else {})}
@@ -1697,4 +1735,4 @@ def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False) -> str
         cooldown_bars=(strategy.get("risk") or {}).get("cooldown_bars", 0),
         position_sizing=strategy.get("position_sizing"),
         risk=strategy.get("risk"),
-    )
+    ))

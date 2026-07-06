@@ -27,6 +27,12 @@ def _n(v) -> float:
     return float(v)
 
 
+# Set by strategy_to_source while rendering a pair strategy: every
+# price-left comparison prints with the spread operand instead, since in
+# a spread file the close IS the spread.
+_PAIR_LEFT: tuple | None = None
+
+
 def _condition_to_term(cond: dict):
     term = _condition_to_term_inner(cond)
     tf = cond.get("timeframe")
@@ -38,6 +44,8 @@ def _condition_to_term(cond: dict):
                 if isinstance(side, TagNode):
                     side.timeframe = tf
                     break
+    if _PAIR_LEFT is not None and isinstance(term, Comparison) and term.left == ("price",):
+        term.left = _PAIR_LEFT
     return term
 
 
@@ -219,6 +227,19 @@ def _metric_tag(m: dict) -> TagNode:
 
 def strategy_to_source(strategy: dict) -> str:
     """Render strategy JSON as canonical .prior text."""
+    uni_check = strategy.get("universe", {}) or {}
+    if uni_check.get("type") == "pair":
+        global _PAIR_LEFT
+        a, b = [str(t).upper() for t in uni_check["tickers"]]
+        _PAIR_LEFT = ("spread", a, b, uni_check.get("form", "ratio"))
+        try:
+            return _strategy_to_source_body(strategy)
+        finally:
+            _PAIR_LEFT = None
+    return _strategy_to_source_body(strategy)
+
+
+def _strategy_to_source_body(strategy: dict) -> str:
     prog = Program()
     prog.name = strategy.get("name")
     prog.direction = strategy.get("direction", "long")
@@ -229,6 +250,8 @@ def strategy_to_source(strategy: dict) -> str:
         prog.universe_tag = _tag(uni["key"])
     elif uni.get("type") == "dynamic":
         prog.universe_tag = _metric_tag({"name": uni["key"], "params": uni.get("params", {})})
+    elif uni.get("type") == "pair":
+        pass  # the spread operand in the rules names the pair; no universe statement
     elif uni.get("tickers"):
         prog.universe_tickers = [str(t).upper() for t in uni["tickers"]]
 

@@ -84,7 +84,8 @@ comparison     = operand , comparator , operand ;
 comparator     = "at" | "above" | "below"
                | "crosses" , ( "above" | "below" )
                | "<" | ">" | "<=" | ">=" ;
-operand        = "price" | "volume" | tag | NUMBER | PERCENT | TICKER ;
+operand        = "price" | "volume" | tag | NUMBER | PERCENT | TICKER | spread ;
+spread         = "spread" , "(" , TICKER , "," , TICKER , [ "," , ( "ratio" | "diff" ) ] , ")" ;
 
 tag            = "[" , tag_body , "]" ;
 tag_body       = TAGNAME , { tag_arg } , [ "on" , TIMEFRAME ]
@@ -128,7 +129,11 @@ The exit expression may mix **condition terms** (evaluated like entry conditions
 
 ### Ticker scoping
 
-An inline `$TICKER` operand scopes the whole strategy to that instrument, and `price`/`volume` refer to it. v0.1 restriction: a program uses **either** a `universe` statement with universe-wide rules, **or** inline single-ticker scoping — mixing the two is a compile error ("per-ticker overrides inside a universe are coming in a later version"). All inline tickers in one program must be the same symbol in v0.1.
+An inline `$TICKER` operand scopes the whole strategy to that instrument, and `price`/`volume` refer to it.
+
+### Spread scoping (pairs trading)
+
+`spread($GLD, $GDX)` is a first-class operand — the ratio of the two legs' closes (`diff` as the optional third argument for the difference form). It behaves exactly like `price`: every price comparison works on it, and indicators compute ON the spread series. Using a spread scopes the whole strategy to that pair: one spread per file, no `universe` statement, no other inline tickers. Buying the spread is long the first leg / short the second in equal dollar legs; shorting mirrors; exits close both legs. Volume-based conditions are compile errors on spreads (a spread has no volume), and percent exits are rejected on `diff` spreads (a difference can cross zero, making percent moves undefined — use ATR units). v0.1 restriction: a program uses **either** a `universe` statement with universe-wide rules, **or** inline single-ticker scoping — mixing the two is a compile error ("per-ticker overrides inside a universe are coming in a later version"). All inline tickers in one program must be the same symbol in v0.1.
 
 ---
 

@@ -230,6 +230,86 @@ def run_backtest(strategy: dict, df, mask=None) -> dict:
     }
 
 
+def run_pair_backtest(strategy: dict, df) -> dict:
+    """Backtest a spread strategy over a multi-ticker frame containing
+    both legs. Position accounting is equal dollar legs: a +1 spread
+    signal is long leg A / short leg B, each at half the allocation, so
+    the position return per bar is 0.5 * (ret_A - ret_B). Net market
+    exposure is ~0 by construction; the P&L is the relative move."""
+    pd, np = _require_pandas()
+
+    a, b = [str(t).upper() for t in strategy["universe"]["tickers"]]
+    form = strategy["universe"].get("form", "ratio")
+    panel = {
+        str(t).upper(): g.drop(columns=["ticker"]).sort_index()
+        for t, g in df.groupby(df["ticker"].str.upper())
+    }
+    missing = [t for t in (a, b) if t not in panel]
+    if missing:
+        raise SystemExit(
+            f"the data file has no rows for {', '.join(missing)} — a spread "
+            f"backtest needs both legs ({a} and {b})"
+        )
+
+    code = compile_strategy(strategy)
+    namespace = {"pd": pd, "np": np, "math": math}
+    exec(code, namespace)  # our own generated code
+    signals = namespace["generate_pair_signals"](panel).astype(float)
+
+    close_a = panel[a]["close"].astype(float).reindex(signals.index)
+    close_b = panel[b]["close"].astype(float).reindex(signals.index)
+    spread = (close_a / close_b) if form == "ratio" else (close_a - close_b)
+
+    position = signals.shift(1).fillna(0)
+    ret_a = close_a.pct_change().fillna(0)
+    ret_b = close_b.pct_change().fillna(0)
+    strat_returns = position * 0.5 * (ret_a - ret_b)
+    equity = (1 + strat_returns).cumprod()
+
+    # Trades on the spread signal's sign, same accounting as run_backtest
+    # but P&L measured on the dollar-neutral pair return.
+    sig = signals.to_numpy()
+    trades = []
+    entry_i = None
+    entry_dir = 0
+    prev = 0.0
+    cum = (1 + strat_returns).cumprod().to_numpy()
+    for i in range(len(sig)):
+        s = sig[i]
+        if s != 0 and prev == 0:
+            entry_i, entry_dir = i, (1 if s > 0 else -1)
+        elif entry_i is not None and (s == 0 or (s > 0) != (prev > 0)):
+            trades.append(cum[i] / cum[entry_i] - 1)
+            entry_i = None if s == 0 else i
+            entry_dir = 0 if s == 0 else (1 if s > 0 else -1)
+        prev = s
+    if entry_i is not None:
+        trades.append(cum[-1] / cum[entry_i] - 1)
+
+    total_return = float(equity.iloc[-1] - 1)
+    years = max(len(signals) / 252.0, 1e-9)
+    cagr = float((1 + total_return) ** (1 / years) - 1) if total_return > -1 else -1.0
+    sharpe = float(strat_returns.mean() / strat_returns.std() * (252 ** 0.5)) if strat_returns.std() > 0 else 0.0
+    running_max = equity.cummax()
+    max_dd = float((equity / running_max - 1).min())
+    wins = [t for t in trades if t > 0]
+
+    return {
+        "pair": f"{a}/{b}",
+        "form": form,
+        "bars": len(signals),
+        "total_return_pct": round(total_return * 100, 2),
+        "spread_start": round(float(spread.iloc[0]), 4),
+        "spread_end": round(float(spread.iloc[-1]), 4),
+        "cagr_pct": round(cagr * 100, 2),
+        "sharpe": round(sharpe, 3),
+        "max_drawdown_pct": round(max_dd * 100, 2),
+        "trades": len(trades),
+        "win_rate_pct": round(100 * len(wins) / len(trades), 2) if trades else None,
+        "avg_trade_pct": round(100 * sum(trades) / len(trades), 3) if trades else None,
+    }
+
+
 def run_ranking_backtest(strategy: dict, df) -> dict:
     """Portfolio backtest for a ranking (hold) strategy over a multi-ticker
     frame. Joint semantics: weights come from generate_weights, equity is

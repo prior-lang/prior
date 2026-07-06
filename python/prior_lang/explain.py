@@ -172,6 +172,14 @@ def explain_strategy(strategy: dict) -> str:
     if uni.get("type") == "prebuilt":
         label = _UNIVERSE_LABELS.get(uni.get("key"), uni.get("key"))
         lines.append(f"Trades {label} on {strategy.get('timeframe', '1d')} bars.")
+    elif uni.get("type") == "pair":
+        a, b = [str(t).upper() for t in uni.get("tickers", ["?", "?"])]
+        form = "ratio" if uni.get("form", "ratio") == "ratio" else "difference"
+        lines.append(
+            f"Trades the {a}/{b} {form} spread on {strategy.get('timeframe', '1d')} bars — "
+            f"a long position is long {a} / short {b} in equal dollar legs; a short "
+            "position mirrors. Conditions and exits evaluate on the spread series itself."
+        )
     elif uni.get("type") == "dynamic":
         p = uni.get("params", {}) or {}
         lines.append(

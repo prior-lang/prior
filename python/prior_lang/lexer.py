@@ -79,6 +79,8 @@ def _lex_line(text: str, lineno: int) -> list[Token]:
             tokens.append(Token("lparen", "(", "(", lineno, col)); i += 1; continue
         if ch == ")":
             tokens.append(Token("rparen", ")", ")", lineno, col)); i += 1; continue
+        if ch == ",":
+            tokens.append(Token("comma", ",", ",", lineno, col)); i += 1; continue
 
         if ch == "$":
             rest = text[i + 1:]
