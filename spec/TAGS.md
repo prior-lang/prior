@@ -188,6 +188,11 @@ Evaluation is bar-close (SPEC §6); precedence within a bar: stop → breakeven 
 |---|---|---|---|
 | `[csp delta=25 dte=45]` | option | delta (25, trader units), dte (45) | the cash-secured put nearest those coordinates |
 | `[covered_call delta=25 dte=45]` | option | same | the call written against held shares |
+| `[put_spread delta=25 width=5 dte=30]` | option | delta (25), width (5, strike points), dte (45) | credit put spread: sell the delta put, buy the wing `width` points lower; defined risk |
+| `[call_spread delta=25 width=5 dte=30]` | option | same | credit call spread: wing `width` points higher |
+| `[iron_condor delta=20 width=5 dte=45]` | option | delta (20), width (5), dte (45) | short put + call at delta, wings `width` points further out; one expiry |
+| `[straddle dte=30]` | option | dte (45) | short the at-the-money put and call; undefined risk |
+| `[strangle delta=20 dte=45]` | option | delta (20), dte (45) | short the delta put and call; undefined risk |
 | `[profit 50%]` | management | percent of credit | close when half the credit is captured |
 | `[loss 200%]` | management | percent of credit | close when the loss reaches 2x the credit |
 | `[dte 21]` | management | days | close (in `close at`) or roll (in `roll at`) at N days to expiry |

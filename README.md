@@ -67,7 +67,7 @@ window sizes shrink with bar size because that is what the free sources allow.
 prior backtest examples/eth_oversold_recovery.prior --data prior-samples/crypto_1d.csv.gz
 ```
 
-There is deliberately no options sample: real chain data cannot be redistributed under any free license, and the local CLI does not backtest options — that runs in AutoQuant. A bundled synthetic universe also ships in `examples/data/` for fully offline use.
+There is deliberately no options sample: real chain data cannot be redistributed under any free license. Options strategies backtest locally on chains YOU bring (`prior backtest wheel.prior --data f.csv --chains chains.csv` — one row per contract per day: date, expiry, strike, right, delta, mid), or in AutoQuant where licensed chain data is built in. A bundled synthetic universe also ships in `examples/data/` for fully offline use.
 
 Install: `pip install prior-lang` (add `[backtest]` for the backtester's pandas dependency).
 

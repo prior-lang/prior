@@ -149,14 +149,54 @@ def _cmd_backtest(args) -> int:
             )
 
     strategy = _load_program(args.file).to_json()
-    if strategy.get("options"):
+    if strategy.get("options") and not args.chains:
         raise SystemExit(
             "options backtests need real chain data, which cannot be bundled or "
-            "synthesized honestly.\nThis strategy validates, formats, and explains "
-            "here; backtest it in AutoQuant desktop, or prior backtest --cloud (coming soon)."
+            "synthesized honestly.\nBring your own: --chains chains.csv (one row per "
+            "contract per day: date, expiry,\nstrike, right, delta, mid) — or backtest "
+            "in AutoQuant desktop, where licensed\nchain data is built in."
         )
     df = load_bars(args.data)
     name = strategy.get("name") or Path(args.file).stem
+
+    if strategy.get("options"):
+        from .options_backtest import load_chains, run_options_backtest
+
+        if "ticker" in df.columns:
+            uni_tickers = (strategy.get("universe") or {}).get("tickers") or []
+            want = (args.ticker or (uni_tickers[0] if uni_tickers else "")).upper()
+            if not want:
+                raise SystemExit("multi-ticker data file — pick the underlying: --ticker F")
+            df = df[df["ticker"].str.upper() == want].drop(columns=["ticker"]).sort_index()
+            if df.empty:
+                raise SystemExit(f"no rows for {want} in the data file")
+        chains = load_chains(args.chains)
+        res = run_options_backtest(strategy, df, chains)
+        print(f"{name} — options on your chains, {len(df)} bars, {res['contracts']} contract(s)")
+        rows = [
+            ("Cycles (positions opened)", res["cycles"]),
+            ("Win rate", f"{res['win_rate_pct']}%" if res.get("win_rate_pct") is not None else "n/a"),
+            ("Premium collected", f"${res['premium_collected']:,.2f}"),
+            ("Option P&L", f"${res['option_pnl']:,.2f}"),
+            ("Stock P&L", f"${res['stock_pnl']:,.2f} ({res['final_shares']} shares held at end)"),
+            ("Net P&L", f"${res['net_pnl']:,.2f}"),
+        ]
+        width = max(len(k) for k, _ in rows)
+        for k, v in rows:
+            print(f"  {k:<{width}}  {v}")
+        if args.trades:
+            orders = res["orders"]
+            print(f"\nOrder log ({len(orders)} rows):")
+            with_rows = orders if len(orders) <= 60 else orders.tail(60)
+            if len(orders) > 60:
+                print("  (showing the last 60)")
+            print(with_rows.to_string(index=False))
+        print(
+            "\nNote: fills at mid, one position at a time, no commissions or "
+            "slippage, no early\nassignment. Multi-leg structures settle cash by "
+            "net intrinsic at expiry."
+        )
+        return 0
 
     if args.trades and strategy.get("ranking"):
         raise SystemExit(
@@ -437,6 +477,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--data", help="bars as CSV, Parquet, JSON, or JSONL (date,open,high,low,close,volume); add a ticker column to run a whole universe from one file")
     p.add_argument("--cloud", action="store_true", help="run against hosted full-history data (coming soon)")
     p.add_argument("--trades", action="store_true", help="print the per-trade log: entry/exit, direction, bars held, return, and which exit fired")
+    p.add_argument("--chains", help="your own option chain data for options strategies (date, expiry, strike, right, delta, mid)")
+    p.add_argument("--ticker", help="which underlying to use when the data file is multi-ticker (options strategies)")
     p.set_defaults(fn=_cmd_backtest)
 
     args = parser.parse_args(argv)
