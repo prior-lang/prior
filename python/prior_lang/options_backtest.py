@@ -77,9 +77,14 @@ def run_options_backtest(strategy: dict, df, chains) -> dict:
     orders = namespace["generate_option_orders"](df, chains)
 
     if len(orders) == 0:
-        return {"orders": orders, "cycles": 0, "wins": None, "net_pnl": 0.0,
-                "premium_collected": 0.0, "stock_pnl": 0.0, "contracts": contracts,
-                "final_shares": 0}
+        # No entries ever fired (gate never true, or no viable contracts):
+        # report an honest zero row, not a crash.
+        return {"orders": orders, "cycles": 0, "wins": 0, "win_rate_pct": None,
+                "net_pnl": 0.0, "option_pnl": 0.0, "stock_pnl": 0.0,
+                "premium_collected": 0.0, "contracts": contracts,
+                "final_shares": 0, "capital_base": None,
+                "total_return_pct": None, "sharpe": None, "max_drawdown_pct": None,
+                "equity": pd.Series(0.0, index=df.index)}
 
     is_structure = "group" in orders.columns
 

@@ -146,3 +146,25 @@ def test_undefined_risk_skips_return_metrics():
     assert res["capital_base"] is None
     assert res["total_return_pct"] is None
     assert res["net_pnl"] > 0                   # P&L still reported
+
+
+def test_zero_entries_reports_gracefully(tmp_path):
+    # Gate never fires (RSI on a flat series is NaN): the CLI must print
+    # an honest zero-cycle report, never crash. Found by the torture test.
+    import os
+    days = pd.date_range("2026-01-05", periods=45, freq="D")
+    _underlying(days).reset_index().rename(columns={"index": "date"}).to_csv(
+        tmp_path / "und.csv", index=False)
+    _chains(days, days[40]).to_csv(tmp_path / "chains.csv", index=False)
+    strat = tmp_path / "s.prior"
+    strat.write_text(
+        "universe $SPY\nwhen [rsi] < 99\n  write [csp delta=25 dte=30]\nclose at [profit 50%]\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-m", "prior_lang.cli", "backtest", str(strat),
+         "--data", str(tmp_path / "und.csv"), "--chains", str(tmp_path / "chains.csv")],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "Traceback" not in proc.stderr
+    assert "Cycles (positions opened)  0" in proc.stdout.replace("   ", "  ") or "0" in proc.stdout
