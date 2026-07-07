@@ -1,0 +1,17 @@
+# The undefined-risk cousin of the condor: no wings, more credit, and a
+# loss stop doing the work the wings would. PRIOR's explain output says
+# "undefined risk until closed" for a reason — the [loss 200%] line is
+# not optional equipment on this one.
+
+strategy "Quiet Tape Strangle"
+
+universe $SPY
+
+when [quiet 1.5%]
+  write [strangle delta=15 dte=45]
+
+close at [profit 50%]
+  or [loss 200%]
+  or [dte 10]
+
+risk [contracts 1]

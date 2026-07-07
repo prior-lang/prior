@@ -1,0 +1,16 @@
+# Own the shares, rent them out. Writing the ~20-delta call after an
+# oversold bounce starts collects premium while leaving room to run;
+# called away means selling into strength, which is the plan working.
+
+strategy "Covered Calls on Dips"
+
+universe $KO
+
+when [rsi] crosses above 35
+  write [covered_call delta=20 dte=30]
+
+close at [profit 60%]
+
+roll at [dte 10]
+
+risk [contracts 5]
