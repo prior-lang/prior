@@ -27,7 +27,9 @@ def test_validate_bad_file_exits_1(tmp_path, capsys):
 def test_fmt_prints_canonical(capsys):
     assert main(["fmt", BOLLINGER]) == 0
     out = capsys.readouterr().out
-    assert out.startswith('strategy "Bollinger Reversal"')
+    # comments come first, preserved, then the canonical strategy line
+    assert out.startswith("#")
+    assert 'strategy "Bollinger Reversal"' in out
     assert "  buy [5% portfolio]" in out
 
 
