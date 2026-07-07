@@ -204,6 +204,8 @@ def _cmd_backtest(args) -> int:
             ]
         else:
             rows.append(("Return / Sharpe / drawdown", "n/a — undefined-risk structure has no fixed collateral base"))
+        if args.capital:
+            rows.append(("Return on capital", f"{res['net_pnl'] / args.capital * 100:.2f}% of ${args.capital:,.0f}"))
         if args.equity:
             res["equity"].rename("equity_pnl").to_csv(args.equity, header=True, index_label="date")
             rows.append(("Equity curve written to", args.equity))
@@ -245,6 +247,10 @@ def _cmd_backtest(args) -> int:
         if args.equity:
             res["equity"].rename("equity").to_csv(args.equity, header=True, index_label="date")
         print(f"{name} — {res['pair']} spread (price {res['form']}), {res['bars']} bars from {args.data}")
+        if args.capital:
+            end = args.capital * (1 + res["total_return_pct"] / 100.0)
+            print(f"  {'Starting capital':<20} ${args.capital:,.2f}")
+            print(f"  {'Final equity':<20} ${end:,.2f}")
         rows = [
             ("Total return", f"{res['total_return_pct']}%"),
             ("CAGR", f"{res['cagr_pct']}%"),
@@ -278,6 +284,10 @@ def _cmd_backtest(args) -> int:
         if args.equity:
             res["equity"].rename("equity").to_csv(args.equity, header=True, index_label="date")
         print(f"{name} — portfolio of {res['tickers']} tickers, {res['bars']} bars from {args.data}")
+        if args.capital:
+            end = args.capital * (1 + res["total_return_pct"] / 100.0)
+            print(f"  {'Starting capital':<22} ${args.capital:,.2f}")
+            print(f"  {'Final equity':<22} ${end:,.2f}")
         rows = [
             ("Total return", f"{res['total_return_pct']}%"),
             ("Equal-weight universe", f"{res['equal_weight_universe_pct']}%"),
@@ -313,7 +323,7 @@ def _cmd_backtest(args) -> int:
                 "scope to one instrument for the export"
             )
         # Multi-ticker file: independent per-ticker runs across the universe.
-        res = run_universe_backtest(strategy, df)
+        res = run_universe_backtest(strategy, df, capital=args.capital)
         rows = res["per_ticker"]
         if not rows:
             raise SystemExit(
@@ -353,7 +363,11 @@ def _cmd_backtest(args) -> int:
             "of rows per ticker)"
         )
 
-    result = run_backtest(strategy, df)
+    result = run_backtest(strategy, df, capital=args.capital)
+    sizing_used = strategy.get("position_sizing") or any(
+        r.get("position_sizing") for r in (strategy.get("rules") or []))
+    if sizing_used and not args.capital:
+        print("(sizing shown as metadata — one fully-allocated position; add --capital 25000 to apply the sizing tags and see dollars)")
     if args.equity:
         result["equity"].rename("equity").to_csv(args.equity, header=True, index_label="date")
     print(f"{name} — {result['bars']} bars from {args.data}")
@@ -368,6 +382,12 @@ def _cmd_backtest(args) -> int:
         ("Win rate", f"{result['win_rate_pct']}%" if result["win_rate_pct"] is not None else "n/a"),
         ("Avg trade", f"{result['avg_trade_pct']}%" if result["avg_trade_pct"] is not None else "n/a"),
     ]
+    if args.capital:
+        rows = [
+            ("Starting capital", f"${result['capital']:,.2f}"),
+            ("Final equity", f"${result['final_equity_usd']:,.2f}"),
+            ("Net P&L", f"${result['net_pnl_usd']:,.2f}"),
+        ] + rows
     width = max(len(label) for label, _ in rows)
     for label, value in rows:
         print(f"  {label:<{width}}  {value}")
@@ -516,6 +536,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--trades", action="store_true", help="print the per-trade log: entry/exit, direction, bars held, return, and which exit fired")
     p.add_argument("--chains", help="your own option chain data for options strategies (date, expiry, strike, right, delta, mid)")
     p.add_argument("--equity", help="write the daily equity curve to this CSV (chart it with anything)")
+    p.add_argument("--capital", type=float, metavar="DOLLARS", help="account size: makes sizing tags real ([5%% portfolio], [$5000], [risk 1%%]) and reports dollar P&L")
     p.add_argument("--from", dest="date_from", metavar="DATE", help="backtest from this date (indicators warm up INSIDE the range — include lead-in for long lookbacks)")
     p.add_argument("--to", dest="date_to", metavar="DATE", help="backtest up to this date")
     p.add_argument("--ticker", help="which underlying to use when the data file is multi-ticker (options strategies)")

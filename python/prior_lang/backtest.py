@@ -123,7 +123,7 @@ def dynamic_membership(strategy: dict, df):
     return member
 
 
-def run_universe_backtest(strategy: dict, df) -> dict:
+def run_universe_backtest(strategy: dict, df, capital: float | None = None) -> dict:
     """Run the strategy independently over each ticker in a multi-ticker
     frame, filtered to the strategy's universe.
 
@@ -153,7 +153,7 @@ def run_universe_backtest(strategy: dict, df) -> dict:
     for ticker in wanted:
         bars = df[df["ticker"].str.upper() == ticker].drop(columns=["ticker"]).sort_index()
         mask = membership[ticker].reindex(bars.index).fillna(False) if membership is not None else None
-        result = run_backtest(strategy, bars, mask=mask)
+        result = run_backtest(strategy, bars, mask=mask, capital=capital)
         result["ticker"] = ticker
         per_ticker.append(result)
 
@@ -167,12 +167,87 @@ def run_universe_backtest(strategy: dict, df) -> dict:
     }
 
 
-def run_backtest(strategy: dict, df, mask=None) -> dict:
+def _rule_weight(sizing, capital: float, stop_pct) -> float:
+    """One entry's position weight under a capital base. Weight is capped
+    at 1.0 (the reference runner does not model leverage)."""
+    if sizing is None:
+        return 1.0
+    m = sizing.get("method")
+    v = float(sizing.get("value", 1.0))
+    if m == "percent_of_portfolio":
+        return min(1.0, v)
+    if m == "fixed_dollar":
+        return min(1.0, v / capital) if capital else 1.0
+    if m == "risk_based":
+        # size so the stop distance costs v of the portfolio
+        if stop_pct:
+            return min(1.0, v / (float(stop_pct) / 100.0))
+        return 1.0
+    return 1.0
+
+
+def _weight_series(strategy: dict, df, signals, capital: float, namespace):
+    """Per-bar position weight implied by the strategy's sizing tags.
+
+    Fast path: every rule shares one sizing -> constant weight. Otherwise
+    the traced run tells us which rule (or direction) opened each
+    position, and that entry's weight holds until the position closes.
+    """
+    pd, _np = _require_pandas()
+    exits = strategy.get("exits")
+    long_stop = ((exits or {}).get("long") or strategy.get("exit") or {}).get("stop_loss_pct")
+    short_stop = ((exits or {}).get("short") or strategy.get("exit") or {}).get("stop_loss_pct")
+
+    rules = strategy.get("rules")
+    if not rules:
+        w = _rule_weight(strategy.get("position_sizing"), capital, long_stop)
+        return pd.Series(w, index=df.index)
+
+    weights = [
+        _rule_weight(r.get("position_sizing") or strategy.get("position_sizing"),
+                     capital,
+                     short_stop if r.get("direction") == "short" else long_stop)
+        for r in rules
+    ]
+    if len(set(weights)) == 1:
+        return pd.Series(weights[0], index=df.index)
+
+    # Differing per-rule sizes: replay the traced events.
+    import numpy as np
+    traced_ns = {"pd": pd, "np": np, "math": math}
+    exec(compile_strategy(strategy, trace=True), traced_ns)
+    _sig, events = traced_ns["generate_signals_traced"](df)
+    long_w = next((w for w, r in zip(weights, rules) if r.get("direction", "long") == "long"), 1.0)
+    short_w = next((w for w, r in zip(weights, rules) if r.get("direction") == "short"), 1.0)
+    w_arr = [1.0] * len(df)
+    current = 1.0
+    ei = 0
+    starts = {}
+    for e in events:
+        if e["event"] == "entry":
+            if "rule" in e and e["rule"] is not None and e["rule"] < len(weights):
+                starts[e["i"]] = weights[e["rule"]]
+            else:
+                starts[e["i"]] = long_w if e.get("dir", 1) > 0 else short_w
+    for i in range(len(df)):
+        if i in starts:
+            current = starts[i]
+        w_arr[i] = current
+    return pd.Series(w_arr, index=df.index)
+
+
+def run_backtest(strategy: dict, df, mask=None, capital: float | None = None) -> dict:
     """Execute the strategy over one instrument's bars; return metrics.
 
     `mask` (optional bool Series on df's index) zeroes signals outside a
     dynamic universe's membership windows. Signals stay float — partial
     exits emit fractional positions like 0.5.
+
+    `capital` (optional dollars) makes the sizing tags REAL: [5%
+    portfolio] takes a 5% position with the rest in cash, [$5000]
+    becomes 5000/capital, [risk 1%] sizes off the stop distance. Without
+    it the runner keeps its documented default: one fully-allocated
+    position, sizing tags as metadata.
     """
     pd, np = _require_pandas()
 
@@ -182,6 +257,8 @@ def run_backtest(strategy: dict, df, mask=None) -> dict:
     signals = namespace["generate_signals"](df).astype(float)
     if mask is not None:
         signals = signals.where(mask, 0.0)
+    if capital:
+        signals = signals * _weight_series(strategy, df, signals, capital, namespace)
 
     close = df["close"].astype(float)
     # Signal at bar i → position over bar i+1 (no lookahead at the fill).
@@ -222,9 +299,17 @@ def run_backtest(strategy: dict, df, mask=None) -> dict:
     max_dd = float((equity / running_max - 1).min())
     wins = [t for t in trades if t > 0]
 
+    dollars = {}
+    if capital:
+        dollars = {
+            "capital": round(float(capital), 2),
+            "final_equity_usd": round(capital * float(equity.iloc[-1]), 2),
+            "net_pnl_usd": round(capital * total_return, 2),
+        }
     return {
         "bars": len(df),
         "equity": equity,
+        **dollars,
         "total_return_pct": round(total_return * 100, 2),
         "buy_hold_return_pct": round(float(closes[-1] / closes[0] - 1) * 100, 2),
         "cagr_pct": round(cagr * 100, 2),

@@ -162,3 +162,41 @@ def test_date_range_slices_the_backtest(tmp_path):
         capture_output=True, text=True)
     assert empty.returncode == 1
     assert "no bars between" in empty.stderr
+
+
+def test_capital_makes_sizing_real(tmp_path):
+    """--capital: [5% portfolio] takes a 5% position, dollar rows appear,
+    and the scaled return is ~5% of the unsized return."""
+    import os
+    closes = np.array([100.0] * 10 + [106.0] * 10 + [100.0] * 10 + [106.0] * 30)
+    days = pd.date_range("2026-01-05", periods=60, freq="B")
+    data = os.path.join(tmp_path, "bars.csv")
+    pd.DataFrame({"date": days, "close": closes, "volume": 1000}).to_csv(data, index=False)
+    strat = os.path.join(tmp_path, "s.prior")
+    with open(strat, "w") as f:
+        f.write("universe $T\nwhen price above 105\n  buy [5% portfolio]\nsell when [after 5 bars]\n")
+
+    import re
+    def run(*extra):
+        p = subprocess.run(
+            [sys.executable, "-m", "prior_lang.cli", "backtest", strat, "--data", data, *extra],
+            capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        return p.stdout
+
+    full = float(re.search(r"Total return\s+(-?[\d.]+)%", run()).group(1))
+    out = run("--capital", "20000")
+    sized = float(re.search(r"Total return\s+(-?[\d.]+)%", out).group(1))
+    assert "Starting capital" in out and "$20,000.00" in out
+    assert abs(sized - full * 0.05) < abs(full) * 0.01 + 0.05  # ~5% weight
+    end = float(re.search(r"Final equity\s+\$([\d,\.]+)", out).group(1).replace(",", ""))
+    assert abs(end - 20000 * (1 + sized / 100)) < 1.0
+
+
+def test_capital_fixed_dollar_and_risk_weights():
+    from prior_lang.backtest import _rule_weight
+    assert _rule_weight({"method": "percent_of_portfolio", "value": 0.05}, 20000, None) == 0.05
+    assert _rule_weight({"method": "fixed_dollar", "value": 5000}, 20000, None) == 0.25
+    assert _rule_weight({"method": "fixed_dollar", "value": 50000}, 20000, None) == 1.0  # capped
+    assert _rule_weight({"method": "risk_based", "value": 0.01}, 20000, 4.0) == 0.25
+    assert _rule_weight(None, 20000, None) == 1.0
