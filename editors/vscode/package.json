@@ -2,7 +2,7 @@
   "name": "prior-lang",
   "displayName": "PRIOR",
   "description": "Language support for PRIOR trading strategies: syntax highlighting, completions, hovers, diagnostics, and formatting.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "autoquant",
   "license": "MIT",
   "repository": {
@@ -32,8 +32,13 @@
     "languages": [
       {
         "id": "prior",
-        "aliases": ["PRIOR", "prior"],
-        "extensions": [".prior"],
+        "aliases": [
+          "PRIOR",
+          "prior"
+        ],
+        "extensions": [
+          ".prior"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -63,6 +68,11 @@
           "default": true,
           "description": "Run prior validate as you type (debounced). Turn off to validate only on save."
         }
+      }
+    },
+    "configurationDefaults": {
+      "[prior]": {
+        "editor.defaultFormatter": "autoquant.prior-lang"
       }
     }
   }
