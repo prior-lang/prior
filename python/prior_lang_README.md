@@ -1,5 +1,9 @@
 # PRIOR
 
+[![PyPI](https://img.shields.io/pypi/v/prior-lang)](https://pypi.org/project/prior-lang/)
+[![Downloads](https://static.pepy.tech/badge/prior-lang)](https://pepy.tech/project/prior-lang)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 **Your hypothesis, written down.**
 
 PRIOR is a tiny declarative language for expressing trading strategies as testable hypotheses. A complete strategy fits in a few lines that read like the idea in your head:
