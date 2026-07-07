@@ -157,6 +157,20 @@ def _cmd_backtest(args) -> int:
             "in AutoQuant desktop, where licensed\nchain data is built in."
         )
     df = load_bars(args.data)
+    if args.date_from or args.date_to:
+        import pandas as pd
+        n_before = len(df)
+        if args.date_from:
+            df = df[df.index >= pd.Timestamp(args.date_from)]
+        if args.date_to:
+            df = df[df.index <= pd.Timestamp(args.date_to)]
+        if df.empty:
+            raise SystemExit(
+                f"no bars between {args.date_from or 'the start'} and "
+                f"{args.date_to or 'the end'} — the file covers a different range"
+            )
+        print(f"date range: {df.index.min().date()} to {df.index.max().date()} "
+              f"({len(df)} of {n_before} rows)")
     name = strategy.get("name") or Path(args.file).stem
 
     if strategy.get("options"):
@@ -502,6 +516,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--trades", action="store_true", help="print the per-trade log: entry/exit, direction, bars held, return, and which exit fired")
     p.add_argument("--chains", help="your own option chain data for options strategies (date, expiry, strike, right, delta, mid)")
     p.add_argument("--equity", help="write the daily equity curve to this CSV (chart it with anything)")
+    p.add_argument("--from", dest="date_from", metavar="DATE", help="backtest from this date (indicators warm up INSIDE the range — include lead-in for long lookbacks)")
+    p.add_argument("--to", dest="date_to", metavar="DATE", help="backtest up to this date")
     p.add_argument("--ticker", help="which underlying to use when the data file is multi-ticker (options strategies)")
     p.set_defaults(fn=_cmd_backtest)
 

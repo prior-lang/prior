@@ -132,3 +132,33 @@ def test_cli_trades_flag():
         )
         assert proc.returncode == 0, proc.stderr
         assert "EXIT" in proc.stdout and "time" in proc.stdout
+
+
+def test_date_range_slices_the_backtest(tmp_path):
+    import os
+    closes = np.array([100.0] * 10 + [106.0] * 10 + [100.0] * 10 + [106.0] * 30)
+    days = pd.date_range("2026-01-05", periods=60, freq="B")
+    data = os.path.join(tmp_path, "bars.csv")
+    pd.DataFrame({"date": days, "close": closes, "volume": 1000}).to_csv(data, index=False)
+    strat = os.path.join(tmp_path, "s.prior")
+    with open(strat, "w") as f:
+        f.write("universe $T\nwhen price above 105\n  buy [10% portfolio]\nsell when [after 5 bars]\n")
+
+    full = subprocess.run(
+        [sys.executable, "-m", "prior_lang.cli", "backtest", strat, "--data", data],
+        capture_output=True, text=True)
+    sliced = subprocess.run(
+        [sys.executable, "-m", "prior_lang.cli", "backtest", strat, "--data", data,
+         "--from", "2026-02-16", "--to", "2026-03-16"],
+        capture_output=True, text=True)
+    assert sliced.returncode == 0, sliced.stderr
+    assert "date range: 2026-02-16 to 2026-03-16" in sliced.stdout
+    assert "21 of 60 rows" in sliced.stdout
+    assert full.stdout != sliced.stdout  # different window, different metrics
+
+    empty = subprocess.run(
+        [sys.executable, "-m", "prior_lang.cli", "backtest", strat, "--data", data,
+         "--from", "2030-01-01"],
+        capture_output=True, text=True)
+    assert empty.returncode == 1
+    assert "no bars between" in empty.stderr

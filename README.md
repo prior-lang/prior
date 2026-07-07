@@ -45,6 +45,7 @@ prior backtest strategy.prior --data bars.csv    metrics over your own OHLCV dat
                                                  column to run a whole universe from one file)
 prior backtest ... --trades            the per-trade log: entry/exit, bars held, return,
                                                  and WHICH exit fired (stop? target? time?)
+prior backtest ... --from 2024-01-01 --to 2025-12-31    backtest a date window
 prior backtest ... --equity out.csv     export the daily equity curve for charting
 prior trace strategy.prior --data bars.csv --date 2026-03-14
                                                  why did/didn't it fire: every condition's
