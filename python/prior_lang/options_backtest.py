@@ -64,8 +64,11 @@ def load_chains(path: str):
     return df
 
 
-def run_options_backtest(strategy: dict, df, chains) -> dict:
-    """Execute an options strategy; return a cash-ledger report."""
+def run_options_backtest(strategy: dict, df, chains, contract_fee: float = 0.0) -> dict:
+    """Execute an options strategy; return a cash-ledger report.
+
+    contract_fee: commission per contract per fill (settlements and
+    expirations are free; opens, closes, and rolls pay)."""
     pd, np = _require_pandas()
 
     contracts = int((strategy.get("risk") or {}).get("contracts", 1))
@@ -81,7 +84,7 @@ def run_options_backtest(strategy: dict, df, chains) -> dict:
         # report an honest zero row, not a crash.
         return {"orders": orders, "cycles": 0, "wins": 0, "win_rate_pct": None,
                 "net_pnl": 0.0, "option_pnl": 0.0, "stock_pnl": 0.0,
-                "premium_collected": 0.0, "contracts": contracts,
+                "premium_collected": 0.0, "fees_paid": 0.0, "contracts": contracts,
                 "final_shares": 0, "capital_base": None,
                 "total_return_pct": None, "sharpe": None, "max_drawdown_pct": None,
                 "equity": pd.Series(0.0, index=df.index)}
@@ -123,9 +126,17 @@ def run_options_backtest(strategy: dict, df, chains) -> dict:
                 shares -= contracts * 100
             # expired: no cash flow
 
+    fees = 0.0
+    if contract_fee:
+        fill_actions = {"open", "roll_open", "close", "roll_close",
+                        "sell_put", "sell_call"}
+        n_fills = int((orders["action"].isin(fill_actions)).sum())
+        fees = n_fills * contract_fee * contracts
+        cash -= fees
+
     last_px = float(df["close"].iloc[-1])
     stock_mark = shares * last_px
-    option_pnl = sum(cycle_pnl.values())
+    option_pnl = sum(cycle_pnl.values()) - fees
     # Stock P&L = everything cash saw beyond the option cycles, plus the mark
     stock_pnl = (cash - option_pnl) + stock_mark
 
@@ -151,6 +162,7 @@ def run_options_backtest(strategy: dict, df, chains) -> dict:
         "option_pnl": round(option_pnl, 2),
         "stock_pnl": round(stock_pnl, 2),
         "premium_collected": round(premium, 2),
+        "fees_paid": round(fees, 2),
         "contracts": contracts,
         "final_shares": shares,
         "capital_base": round(capital, 2) if capital else None,

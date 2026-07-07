@@ -46,6 +46,9 @@ prior backtest strategy.prior --data bars.csv    metrics over your own OHLCV dat
 prior backtest ... --trades            the per-trade log: entry/exit, bars held, return,
                                                  and WHICH exit fired (stop? target? time?)
 prior backtest ... --capital 25000     apply the sizing tags and report dollars
+prior backtest ... --fee-bps 5 --slippage-bps 5    trading costs per side
+prior backtest ... --contract-fee 0.65 options commission per contract per fill
+prior backtest ... --json              metrics as JSON for scripting
 prior backtest ... --from 2024-01-01 --to 2025-12-31    backtest a date window
 prior backtest ... --equity out.csv     export the daily equity curve for charting
 prior trace strategy.prior --data bars.csv --date 2026-03-14

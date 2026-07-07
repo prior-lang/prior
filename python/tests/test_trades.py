@@ -200,3 +200,28 @@ def test_capital_fixed_dollar_and_risk_weights():
     assert _rule_weight({"method": "fixed_dollar", "value": 50000}, 20000, None) == 1.0  # capped
     assert _rule_weight({"method": "risk_based", "value": 0.01}, 20000, 4.0) == 0.25
     assert _rule_weight(None, 20000, None) == 1.0
+
+
+def test_costs_and_json_flags(tmp_path):
+    import os, json as _json
+    closes = np.array([100.0] * 10 + [106.0] * 10 + [100.0] * 10 + [106.0] * 30)
+    days = pd.date_range("2026-01-05", periods=60, freq="B")
+    data = os.path.join(tmp_path, "bars.csv")
+    pd.DataFrame({"date": days, "close": closes, "volume": 1000}).to_csv(data, index=False)
+    strat = os.path.join(tmp_path, "s.prior")
+    with open(strat, "w") as f:
+        f.write("universe $T\nwhen price above 105\n  buy [10% portfolio]\nsell when [after 5 bars]\n")
+
+    def run_json(*extra):
+        p = subprocess.run(
+            [sys.executable, "-m", "prior_lang.cli", "backtest", strat,
+             "--data", data, "--json", *extra],
+            capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        return _json.loads(p.stdout)
+
+    free = run_json()
+    costly = run_json("--fee-bps", "10", "--slippage-bps", "10")
+    assert costly["total_return_pct"] < free["total_return_pct"]  # costs drag
+    assert "equity" not in free  # JSON stays serializable
+    assert free["trades"] == costly["trades"]  # costs change P&L, not signals

@@ -123,7 +123,8 @@ def dynamic_membership(strategy: dict, df):
     return member
 
 
-def run_universe_backtest(strategy: dict, df, capital: float | None = None) -> dict:
+def run_universe_backtest(strategy: dict, df, capital: float | None = None,
+                          cost_bps: float = 0.0) -> dict:
     """Run the strategy independently over each ticker in a multi-ticker
     frame, filtered to the strategy's universe.
 
@@ -153,7 +154,7 @@ def run_universe_backtest(strategy: dict, df, capital: float | None = None) -> d
     for ticker in wanted:
         bars = df[df["ticker"].str.upper() == ticker].drop(columns=["ticker"]).sort_index()
         mask = membership[ticker].reindex(bars.index).fillna(False) if membership is not None else None
-        result = run_backtest(strategy, bars, mask=mask, capital=capital)
+        result = run_backtest(strategy, bars, mask=mask, capital=capital, cost_bps=cost_bps)
         result["ticker"] = ticker
         per_ticker.append(result)
 
@@ -236,7 +237,8 @@ def _weight_series(strategy: dict, df, signals, capital: float, namespace):
     return pd.Series(w_arr, index=df.index)
 
 
-def run_backtest(strategy: dict, df, mask=None, capital: float | None = None) -> dict:
+def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
+                 cost_bps: float = 0.0) -> dict:
     """Execute the strategy over one instrument's bars; return metrics.
 
     `mask` (optional bool Series on df's index) zeroes signals outside a
@@ -265,6 +267,11 @@ def run_backtest(strategy: dict, df, mask=None, capital: float | None = None) ->
     position = signals.shift(1).fillna(0)
     bar_returns = close.pct_change().fillna(0)
     strat_returns = position * bar_returns
+    if cost_bps:
+        # Cost charged on every unit of position change (entries, exits,
+        # partials, flips all pay in proportion to size traded).
+        turnover = position.diff().abs().fillna(position.abs())
+        strat_returns = strat_returns - turnover * (cost_bps / 10_000.0)
     equity = (1 + strat_returns).cumprod()
 
     # Trades: edges of the signal's SIGN (fractional partials like 0.5 stay
@@ -393,7 +400,7 @@ def pair_trade_log(strategy: dict, df) -> list[dict]:
     return _pair_events_into_trades(events, sig.index, spread.to_numpy())
 
 
-def run_pair_backtest(strategy: dict, df) -> dict:
+def run_pair_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
     """Backtest a spread strategy over a multi-ticker frame containing
     both legs. Position accounting is equal dollar legs: a +1 spread
     signal is long leg A / short leg B, each at half the allocation, so
@@ -427,6 +434,9 @@ def run_pair_backtest(strategy: dict, df) -> dict:
     ret_a = close_a.pct_change().fillna(0)
     ret_b = close_b.pct_change().fillna(0)
     strat_returns = position * 0.5 * (ret_a - ret_b)
+    if cost_bps:
+        turnover = position.diff().abs().fillna(position.abs())
+        strat_returns = strat_returns - turnover * (cost_bps / 10_000.0)  # both legs, half-sized each
     equity = (1 + strat_returns).cumprod()
 
     # Trades on the spread signal's sign, same accounting as run_backtest
@@ -474,7 +484,7 @@ def run_pair_backtest(strategy: dict, df) -> dict:
     }
 
 
-def run_ranking_backtest(strategy: dict, df) -> dict:
+def run_ranking_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
     """Portfolio backtest for a ranking (hold) strategy over a multi-ticker
     frame. Joint semantics: weights come from generate_weights, equity is
     the weighted sum of per-ticker returns, and turnover (mean |weight
@@ -510,6 +520,9 @@ def run_ranking_backtest(strategy: dict, df) -> dict:
     closes = pd.DataFrame({t: p["close"] for t, p in panel.items()}).sort_index()
     rets = closes.pct_change().fillna(0)
     port_rets = (weights.shift(1).fillna(0) * rets).sum(axis=1)
+    if cost_bps:
+        daily_turnover = weights.diff().abs().sum(axis=1).fillna(0)
+        port_rets = port_rets - daily_turnover * (cost_bps / 10_000.0)
     equity = (1 + port_rets).cumprod()
 
     turnover = weights.diff().abs().sum(axis=1)

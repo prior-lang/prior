@@ -172,6 +172,31 @@ def _cmd_backtest(args) -> int:
         print(f"date range: {df.index.min().date()} to {df.index.max().date()} "
               f"({len(df)} of {n_before} rows)")
     name = strategy.get("name") or Path(args.file).stem
+    cost_bps = float(args.fee_bps or 0.0) + float(args.slippage_bps or 0.0)
+
+    # Timeframe sanity: a 1h strategy fed daily bars silently means
+    # nonsense ([after 24 bars] = 24 days). Warn on a clear mismatch.
+    tf_secs = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400,
+               "1d": 86400, "1w": 604800}.get(strategy.get("timeframe", "1d"))
+    if tf_secs and len(df) > 3:
+        import pandas as pd
+        spacing = df.index.to_series().diff().dropna().median().total_seconds()
+        # business-daily data has weekend gaps; accept up to ~3.5x
+        if spacing > tf_secs * 3.6 or spacing < tf_secs / 3.6:
+            print(f"WARNING: strategy timeframe is {strategy.get('timeframe', '1d')} "
+                  f"but the data's bar spacing looks like ~{int(spacing)}s — "
+                  "bar-count tags like [after N bars] count DATA bars", file=sys.stderr)
+
+    def _emit_json(payload: dict) -> int:
+        clean = {k: v for k, v in payload.items()
+                 if k not in ("equity", "orders", "per_ticker") and not hasattr(v, "iloc")}
+        if "per_ticker" in payload:
+            clean["per_ticker"] = [
+                {k: v for k, v in r.items() if k != "equity" and not hasattr(v, "iloc")}
+                for r in payload["per_ticker"]
+            ]
+        print(json.dumps(clean, indent=2, default=str))
+        return 0
 
     if strategy.get("options"):
         from .options_backtest import load_chains, run_options_backtest
@@ -185,12 +210,15 @@ def _cmd_backtest(args) -> int:
             if df.empty:
                 raise SystemExit(f"no rows for {want} in the data file")
         chains = load_chains(args.chains)
-        res = run_options_backtest(strategy, df, chains)
+        res = run_options_backtest(strategy, df, chains, contract_fee=args.contract_fee)
+        if args.as_json:
+            return _emit_json(res)
         print(f"{name} — options on your chains, {len(df)} bars, {res['contracts']} contract(s)")
         rows = [
             ("Cycles (positions opened)", res["cycles"]),
             ("Win rate", f"{res['win_rate_pct']}%" if res.get("win_rate_pct") is not None else "n/a"),
             ("Premium collected", f"${res['premium_collected']:,.2f}"),
+            *([("Fees paid", f"${res['fees_paid']:,.2f}")] if args.contract_fee else []),
             ("Option P&L", f"${res['option_pnl']:,.2f}"),
             ("Stock P&L", f"${res['stock_pnl']:,.2f} ({res['final_shares']} shares held at end)"),
             ("Net P&L", f"${res['net_pnl']:,.2f}"),
@@ -243,7 +271,9 @@ def _cmd_backtest(args) -> int:
                 "a spread backtest needs both legs — the data file needs a "
                 "ticker column (one stacked set of rows per ticker)"
             )
-        res = run_pair_backtest(strategy, df)
+        res = run_pair_backtest(strategy, df, cost_bps=cost_bps)
+        if args.as_json:
+            return _emit_json(res)
         if args.equity:
             res["equity"].rename("equity").to_csv(args.equity, header=True, index_label="date")
         print(f"{name} — {res['pair']} spread (price {res['form']}), {res['bars']} bars from {args.data}")
@@ -280,7 +310,9 @@ def _cmd_backtest(args) -> int:
                 "ranking strategies decide across a universe — the data file "
                 "needs a ticker column (one stacked set of rows per ticker)"
             )
-        res = run_ranking_backtest(strategy, df)
+        res = run_ranking_backtest(strategy, df, cost_bps=cost_bps)
+        if args.as_json:
+            return _emit_json(res)
         if args.equity:
             res["equity"].rename("equity").to_csv(args.equity, header=True, index_label="date")
         print(f"{name} — portfolio of {res['tickers']} tickers, {res['bars']} bars from {args.data}")
@@ -323,7 +355,9 @@ def _cmd_backtest(args) -> int:
                 "scope to one instrument for the export"
             )
         # Multi-ticker file: independent per-ticker runs across the universe.
-        res = run_universe_backtest(strategy, df, capital=args.capital)
+        res = run_universe_backtest(strategy, df, capital=args.capital, cost_bps=cost_bps)
+        if args.as_json:
+            return _emit_json(res)
         rows = res["per_ticker"]
         if not rows:
             raise SystemExit(
@@ -363,7 +397,9 @@ def _cmd_backtest(args) -> int:
             "of rows per ticker)"
         )
 
-    result = run_backtest(strategy, df, capital=args.capital)
+    result = run_backtest(strategy, df, capital=args.capital, cost_bps=cost_bps)
+    if args.as_json:
+        return _emit_json(result)
     sizing_used = strategy.get("position_sizing") or any(
         r.get("position_sizing") for r in (strategy.get("rules") or []))
     if sizing_used and not args.capital:
@@ -537,6 +573,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--chains", help="your own option chain data for options strategies (date, expiry, strike, right, delta, mid)")
     p.add_argument("--equity", help="write the daily equity curve to this CSV (chart it with anything)")
     p.add_argument("--capital", type=float, metavar="DOLLARS", help="account size: makes sizing tags real ([5%% portfolio], [$5000], [risk 1%%]) and reports dollar P&L")
+    p.add_argument("--fee-bps", dest="fee_bps", type=float, default=0.0, metavar="BPS", help="commission per side in basis points (5 = 0.05%%)")
+    p.add_argument("--slippage-bps", dest="slippage_bps", type=float, default=0.0, metavar="BPS", help="slippage per side in basis points, added to fees")
+    p.add_argument("--contract-fee", dest="contract_fee", type=float, default=0.0, metavar="USD", help="options commission per contract per fill (e.g. 0.65)")
+    p.add_argument("--json", dest="as_json", action="store_true", help="print the metrics as JSON instead of the table")
     p.add_argument("--from", dest="date_from", metavar="DATE", help="backtest from this date (indicators warm up INSIDE the range — include lead-in for long lookbacks)")
     p.add_argument("--to", dest="date_to", metavar="DATE", help="backtest up to this date")
     p.add_argument("--ticker", help="which underlying to use when the data file is multi-ticker (options strategies)")
