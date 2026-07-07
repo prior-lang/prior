@@ -70,6 +70,37 @@
       ]
     },
     {
+      "name": "call_spread",
+      "kind": "option",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Credit call spread: sell the ~`delta` call, buy a call `width` points higher. Defined risk.",
+      "example": "write [call_spread delta=25 width=5 dte=30]",
+      "params": [
+        {
+          "name": "delta",
+          "kind": "number",
+          "default": 25,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "width",
+          "kind": "number",
+          "default": 5,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "dte",
+          "kind": "number",
+          "default": 45,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
       "name": "collateral",
       "kind": "risk",
       "usage": "n/a",
@@ -363,6 +394,37 @@
       ]
     },
     {
+      "name": "iron_condor",
+      "kind": "option",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Sell the ~`delta` put and call, buy wings `width` points further out. Defined risk both sides.",
+      "example": "write [iron_condor delta=20 width=5 dte=45]",
+      "params": [
+        {
+          "name": "delta",
+          "kind": "number",
+          "default": 20,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "width",
+          "kind": "number",
+          "default": 5,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "dte",
+          "kind": "number",
+          "default": 45,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
       "name": "ivrank",
       "kind": "condition",
       "usage": "operand",
@@ -646,6 +708,37 @@
       ]
     },
     {
+      "name": "put_spread",
+      "kind": "option",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Credit put spread: sell the ~`delta` put, buy a put `width` strike points lower. Defined risk (width minus credit).",
+      "example": "write [put_spread delta=25 width=5 dte=30]",
+      "params": [
+        {
+          "name": "delta",
+          "kind": "number",
+          "default": 25,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "width",
+          "kind": "number",
+          "default": 5,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "dte",
+          "kind": "number",
+          "default": 45,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
       "name": "quiet",
       "kind": "condition",
       "usage": "predicate",
@@ -841,6 +934,47 @@
           "kind": "percent",
           "default": null,
           "required": true
+        }
+      ]
+    },
+    {
+      "name": "straddle",
+      "kind": "option",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Sell the at-the-money put and call. Undefined risk until closed.",
+      "example": "write [straddle dte=30]",
+      "params": [
+        {
+          "name": "dte",
+          "kind": "number",
+          "default": 45,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
+      "name": "strangle",
+      "kind": "option",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Sell the ~`delta` put and call. Undefined risk until closed.",
+      "example": "write [strangle delta=20 dte=45]",
+      "params": [
+        {
+          "name": "delta",
+          "kind": "number",
+          "default": 20,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "dte",
+          "kind": "number",
+          "default": 45,
+          "required": false,
+          "named": true
         }
       ]
     },

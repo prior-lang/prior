@@ -70,6 +70,11 @@ DESCRIPTIONS: dict[str, tuple[str, str]] = {
     # ── options ───────────────────────────────────────────────────
     "csp": ("Cash-secured put at ~`delta`, ~`dte` days out.", "write [csp delta=20 dte=30]"),
     "covered_call": ("Covered call against held shares at ~`delta`, ~`dte` days out.", "write [covered_call delta=25 dte=45]"),
+    "put_spread": ("Credit put spread: sell the ~`delta` put, buy a put `width` strike points lower. Defined risk (width minus credit).", "write [put_spread delta=25 width=5 dte=30]"),
+    "call_spread": ("Credit call spread: sell the ~`delta` call, buy a call `width` points higher. Defined risk.", "write [call_spread delta=25 width=5 dte=30]"),
+    "iron_condor": ("Sell the ~`delta` put and call, buy wings `width` points further out. Defined risk both sides.", "write [iron_condor delta=20 width=5 dte=45]"),
+    "straddle": ("Sell the at-the-money put and call. Undefined risk until closed.", "write [straddle dte=30]"),
+    "strangle": ("Sell the ~`delta` put and call. Undefined risk until closed.", "write [strangle delta=20 dte=45]"),
     "profit": ("Options management: close at this % of max profit.", "close at [profit 50%]"),
     "loss": ("Options management: close at this % loss of credit received.", "close at [loss 200%]"),
     "dte": ("Options management: act when this many days to expiry remain.", "roll at [dte 21]"),

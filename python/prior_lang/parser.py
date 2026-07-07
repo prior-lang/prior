@@ -142,9 +142,15 @@ class Program:
                           "delta": float(self.opt_params.get("delta", 25)),
                           "dte": int(self.opt_params.get("dte", 45))}
             else:
-                option = {"type": self.opt_option.name,
-                          "delta": float(self.opt_option.params.get("delta", 25)),
-                          "dte": int(self.opt_option.params.get("dte", 45))}
+                oname = self.opt_option.name
+                p = self.opt_option.params
+                option = {"type": oname}
+                if oname != "straddle":
+                    default_delta = 20 if oname in ("iron_condor", "strangle") else 25
+                    option["delta"] = float(p.get("delta", default_delta))
+                if oname in ("put_spread", "call_spread", "iron_condor"):
+                    option["width"] = float(p.get("width", 5))
+                option["dte"] = int(p.get("dte", 45))
             out = {
                 "version": VERSION,
                 "name": self.name,
@@ -1082,7 +1088,11 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
                 otag = _parse_tag(cur)
                 if otag.spec is None or otag.spec.kind != "option":
                     cur.err(f"write takes an option tag, not [{otag.name}]", tok=buy,
-                            suggestion="write [csp delta=25 dte=45] or write [covered_call delta=25 dte=45]")
+                            suggestion="write [csp delta=25 dte=45], [put_spread delta=25 width=5 dte=30], "
+                                       "[iron_condor ...], [straddle ...], [strangle ...]")
+                if otag.name in ("put_spread", "call_spread", "iron_condor"):
+                    if float(otag.params.get("width", 5)) <= 0:
+                        cur.err("width is the wing distance in strike points — it must be positive", tok=buy)
                 prog.opt_form = "rules"
                 prog.opt_option = otag
                 prog.opt_entry_logic = rule_logic

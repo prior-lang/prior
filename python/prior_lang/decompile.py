@@ -271,13 +271,22 @@ def _strategy_to_source_body(strategy: dict) -> str:
         if prog.opt_form == "wheel":
             prog.opt_params = {"delta": _n(opt.get("delta", 25)), "dte": _n(opt.get("dte", 45))}
         else:
+            otype = opt["type"]
+            d_delta = 20 if otype in ("iron_condor", "strangle") else 25
             named = {}
-            if _n(opt.get("delta", 25)) != 25:
-                named["delta"] = ("number", _n(opt["delta"]))
-            if _n(opt.get("dte", 45)) != 45:
-                named["dte"] = ("number", _n(opt["dte"]))
-            prog.opt_option = _tag(opt["type"], named=named,
-                                   params={"delta": _n(opt.get("delta", 25)), "dte": _n(opt.get("dte", 45))})
+            params = {}
+            if otype != "straddle":
+                params["delta"] = _n(opt.get("delta", d_delta))
+                if params["delta"] != d_delta:
+                    named["delta"] = ("number", params["delta"])
+            if otype in ("put_spread", "call_spread", "iron_condor"):
+                params["width"] = _n(opt.get("width", 5))
+                if params["width"] != 5:
+                    named["width"] = ("number", params["width"])
+            params["dte"] = _n(opt.get("dte", 45))
+            if params["dte"] != 45:
+                named["dte"] = ("number", params["dte"])
+            prog.opt_option = _tag(otype, named=named, params=params)
         mgmt = options.get("management") or {}
         if mgmt.get("profit_pct") is not None:
             prog.mgmt_close_terms.append(_tag("profit", [("percent", _n(mgmt["profit_pct"]))], params={"value": _n(mgmt["profit_pct"])}))

@@ -208,13 +208,40 @@ def explain_strategy(strategy: dict) -> str:
                     f"if assigned, sell the ~{delta}-delta covered call against the shares; "
                     "called away means back to selling puts.")
         else:
-            kind = "cash-secured put" if opt.get("type") == "csp" else "covered call"
-            line = f"Write the ~{delta}-delta {kind} ~{dte} days out"
+            otype = opt.get("type")
+            width = _num(opt.get("width", 5))
+            note = ""
+            if otype == "covered_call":
+                line = f"Write the ~{delta}-delta covered call ~{dte} days out"
+            elif otype == "put_spread":
+                line = (f"Sell the ~{delta}-delta put and buy a put {width} points lower "
+                        f"(~{dte} days out)")
+                note = ("A defined-risk credit put spread: max loss is capped at the "
+                        "width minus the credit.")
+            elif otype == "call_spread":
+                line = (f"Sell the ~{delta}-delta call and buy a call {width} points higher "
+                        f"(~{dte} days out)")
+                note = ("A defined-risk credit call spread: max loss is capped at the "
+                        "width minus the credit.")
+            elif otype == "iron_condor":
+                line = (f"Sell the ~{delta}-delta put and call, buy wings {width} points "
+                        f"further out (~{dte} days out)")
+                note = "An iron condor: max loss is capped by the wings."
+            elif otype == "straddle":
+                line = f"Sell the at-the-money straddle ~{dte} days out"
+                note = "Undefined risk until closed."
+            elif otype == "strangle":
+                line = f"Sell the ~{delta}-delta strangle ~{dte} days out"
+                note = "Undefined risk until closed."
+            else:
+                line = f"Write the ~{delta}-delta cash-secured put ~{dte} days out"
             conds = (options.get("entry") or {}).get("conditions") or []
             if conds:
                 joiner = " and " if (options.get("entry") or {}).get("match_logic", "all") == "all" else " or "
                 line += " when " + joiner.join(_condition_text(c) for c in conds)
             line += "."
+            if note:
+                line += " " + note
         lines.append(line)
         bits = []
         if mgmt.get("profit_pct") is not None:

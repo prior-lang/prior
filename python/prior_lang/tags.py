@@ -257,6 +257,33 @@ _register(TagSpec(
     named={"delta": _p("delta", NUMBER, 25), "dte": _p("dte", NUMBER, 45)},
 ))
 
+# Multi-leg credit structures (options slice 3). Structures are always
+# tags, never spread() — locked 2026-07-07 so option verticals can never
+# collide with the pairs operand. width = wing distance in strike points.
+_register(TagSpec(
+    name="put_spread", kind="option", usage="n/a",
+    named={"delta": _p("delta", NUMBER, 25), "width": _p("width", NUMBER, 5),
+           "dte": _p("dte", NUMBER, 45)},
+))
+_register(TagSpec(
+    name="call_spread", kind="option", usage="n/a",
+    named={"delta": _p("delta", NUMBER, 25), "width": _p("width", NUMBER, 5),
+           "dte": _p("dte", NUMBER, 45)},
+))
+_register(TagSpec(
+    name="iron_condor", kind="option", usage="n/a",
+    named={"delta": _p("delta", NUMBER, 20), "width": _p("width", NUMBER, 5),
+           "dte": _p("dte", NUMBER, 45)},
+))
+_register(TagSpec(
+    name="straddle", kind="option", usage="n/a",
+    named={"dte": _p("dte", NUMBER, 45)},
+))
+_register(TagSpec(
+    name="strangle", kind="option", usage="n/a",
+    named={"delta": _p("delta", NUMBER, 20), "dte": _p("dte", NUMBER, 45)},
+))
+
 # ── Management tags (close at ... / roll at ...) ───────────────────
 
 _register(TagSpec(
