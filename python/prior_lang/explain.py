@@ -181,9 +181,10 @@ def explain_strategy(strategy: dict) -> str:
         )
         lines.append(
             f"Trades the spread between {a} and {b} ({form}) on "
-            f"{strategy.get('timeframe', '1d')} bars — a long position is long {a} / "
-            f"short {b} in equal dollar legs; a short position mirrors. Conditions "
-            "and exits evaluate on the spread series itself."
+            f"{strategy.get('timeframe', '1d')} bars — a long position buys {a} and "
+            f"shorts {b} outright (the underlyings themselves, not options) in equal "
+            "dollar legs; a short position mirrors. Conditions and exits evaluate on "
+            "the spread series itself."
         )
     elif uni.get("type") == "dynamic":
         p = uni.get("params", {}) or {}
