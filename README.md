@@ -61,6 +61,9 @@ prior sample stocks          5 years of daily bars for 20 US large caps
 prior sample forex           5 years of daily closes for 7 majors
 prior sample crypto --timeframe 1h    2 years of hourly bars (multi-timeframe ready)
 
+Every category also comes in 15m, 5m, and 1m flavors (--timeframe 15m and so on);
+window sizes shrink with bar size because that is what the free sources allow.
+
 prior backtest examples/eth_oversold_recovery.prior --data prior-samples/crypto_1d.csv.gz
 ```
 
