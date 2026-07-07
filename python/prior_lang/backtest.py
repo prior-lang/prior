@@ -35,6 +35,12 @@ def load_bars(path: str):
     stacked set of rows per ticker — and is preserved for the universe
     runner to group on."""
     pd, _np = _require_pandas()
+    import os
+    if not os.path.exists(path):
+        raise SystemExit(
+            f"no such data file: {path}\n"
+            "(need bars fast? prior sample lists free downloads)"
+        )
     if path.endswith((".parquet", ".pq")):
         df = pd.read_parquet(path)
     elif path.endswith(".jsonl"):

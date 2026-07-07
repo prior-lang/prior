@@ -75,3 +75,21 @@ def test_cli_lists_catalog():
     for word in ("stocks", "crypto", "forex", "prior-samples"):
         assert word in proc.stdout
     assert "AutoQuant" in proc.stdout  # the options explanation
+
+
+def test_missing_data_file_is_a_human_error(tmp_path):
+    pytest.importorskip("pandas")
+    import os
+    strat = tmp_path / "s.prior"
+    strat.write_text(
+        "universe $T\nwhen price above 1\n  buy [5% portfolio]\nsell when [after 5 bars]\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-m", "prior_lang.cli", "backtest", str(strat),
+         "--data", str(tmp_path / "nope.csv")],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 1
+    assert "no such data file" in proc.stderr
+    assert "Traceback" not in proc.stderr
+    assert "prior sample" in proc.stderr
