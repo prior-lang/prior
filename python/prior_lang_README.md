@@ -84,23 +84,19 @@ Install: `pip install prior-lang` (add `[backtest]` for the backtester's pandas 
 ## Status
 
 Pre-1.0; syntax may change. Working today: the spec, the parser, the canonical
-formatter, the reference code generator, the English readback, and a local
-reference backtester (bring your own CSV/Parquet bars). Coming: bundled sample
-data, hosted full-history backtests (`--cloud`).
+formatter, the reference code generator, the English readback, a local
+reference backtester (bring your own CSV/Parquet bars), and free sample data
+via `prior sample`. Coming: hosted full-history backtests (`--cloud`).
 
 ## Editor support
 
 The [VS Code extension](editors/vscode/) gives you syntax highlighting, tag completions with parameter docs, hovers that show what every tag expands to, live compiler diagnostics with quick fixes, and `prior fmt` as the document formatter.
 
-Until the Marketplace listing lands, install it from the repo:
+Install it from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=autoquant.prior-lang) — search "PRIOR" in the Extensions panel, or:
 
 ```
-cd editors/vscode
-npx @vscode/vsce package
-code --install-extension prior-lang-*.vsix
+code --install-extension autoquant.prior-lang
 ```
-
-(If `code` isn't on your PATH: VS Code → ⌘⇧P → "Shell Command: Install 'code' command in PATH", or drag the `.vsix` onto the Extensions panel.)
 
 Highlighting, completions, and hovers work immediately. Diagnostics and formatting shell out to the CLI so the editor reports exactly what the compiler will say — `pip install prior-lang`, or point the `prior.command` setting at any environment that has it.
 
