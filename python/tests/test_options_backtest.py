@@ -117,3 +117,32 @@ def test_cli_refusal_mentions_chains(tmp_path):
     assert proc.returncode == 1
     assert "--chains" in proc.stderr
     assert "AutoQuant" in proc.stderr
+
+
+def test_defined_risk_gets_full_metrics():
+    days = pd.date_range("2026-01-05", periods=45, freq="D")
+    df = _underlying(days)
+    strategy = prior_lang.compile_source(
+        "universe $SPY\nwhen price above 1\n  write [put_spread delta=25 width=5 dte=30]\n"
+        "close at [profit 50%]\nrisk [contracts 2]\n"
+    )
+    res = run_options_backtest(strategy, df, _chains(days, days[40]))
+    assert res["capital_base"] == 1000.0        # width 5 x 100 x 2 contracts
+    assert res["total_return_pct"] == 2.5       # $25 on $1,000
+    assert res["sharpe"] is not None and res["max_drawdown_pct"] is not None
+    assert len(res["equity"]) == len(df)        # daily mark-to-market curve
+    assert res["equity"].iloc[0] == 0.0
+    assert res["equity"].iloc[-1] == 25.0
+
+
+def test_undefined_risk_skips_return_metrics():
+    days = pd.date_range("2026-01-05", periods=45, freq="D")
+    df = _underlying(days)
+    strategy = prior_lang.compile_source(
+        "universe $SPY\nwhen price above 1\n  write [strangle delta=20 dte=30]\n"
+        "close at [profit 50%]\n"
+    )
+    res = run_options_backtest(strategy, df, _chains(days, days[40]))
+    assert res["capital_base"] is None
+    assert res["total_return_pct"] is None
+    assert res["net_pnl"] > 0                   # P&L still reported

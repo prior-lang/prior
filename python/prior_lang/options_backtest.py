@@ -124,6 +124,18 @@ def run_options_backtest(strategy: dict, df, chains) -> dict:
     # Stock P&L = everything cash saw beyond the option cycles, plus the mark
     stock_pnl = (cash - option_pnl) + stock_mark
 
+    equity, capital = _mark_daily(pd, df, chains, orders, mult, is_structure)
+
+    total_return_pct = sharpe = max_dd_pct = None
+    if capital and capital > 0:
+        rets = equity.diff().fillna(0.0) / capital
+        total_return_pct = round((cash + stock_mark) / capital * 100, 2)
+        sd = rets.std()
+        sharpe = round(float(rets.mean() / sd * (252 ** 0.5)), 3) if sd > 0 else 0.0
+        curve = capital + equity
+        running_max = curve.cummax()
+        max_dd_pct = round(float((curve / running_max - 1).min()) * 100, 2)
+
     wins = [v for v in cycle_pnl.values() if v > 0]
     return {
         "orders": orders,
@@ -136,4 +148,96 @@ def run_options_backtest(strategy: dict, df, chains) -> dict:
         "premium_collected": round(premium, 2),
         "contracts": contracts,
         "final_shares": shares,
+        "capital_base": round(capital, 2) if capital else None,
+        "total_return_pct": total_return_pct,
+        "sharpe": sharpe,
+        "max_drawdown_pct": max_dd_pct,
+        "equity": equity,
     }
+
+
+def _requirement(legs, entry_px, mult) -> float | None:
+    """Collateral proxy for one open position. None = undefined risk."""
+    shorts = [l for l in legs if l["side"] == "short"]
+    longs = [l for l in legs if l["side"] == "long"]
+    if not shorts:
+        return 0.0
+    if not longs:
+        if len(shorts) == 1:
+            leg = shorts[0]
+            # cash-secured put, or covered call backed by shares
+            return leg["strike"] * mult if leg["right"] == "P" else entry_px * mult
+        return None  # straddle / strangle: undefined risk
+    req = 0.0
+    for right in ("P", "C"):
+        s = [l for l in shorts if l["right"] == right]
+        w = [l for l in longs if l["right"] == right]
+        if s and w:
+            req = max(req, abs(s[0]["strike"] - w[0]["strike"]) * mult)
+        elif s:
+            return None
+    return req
+
+
+def _mark_daily(pd, df, chains, orders, mult, is_structure):
+    """Daily mark-to-market equity (P&L in dollars, starts at 0) and the
+    max collateral requirement observed (the capital base for returns)."""
+    realized = 0.0
+    shares = 0
+    open_legs: list = []
+    entry_px = 0.0
+    capital = 0.0
+    undefined_risk = False
+    by_date: dict = {}
+    for _, o in orders.iterrows():
+        by_date.setdefault(o["date"], []).append(o)
+
+    values = []
+    for d in df.index:
+        px = float(df.at[d, "close"])
+        for o in by_date.get(d, []):
+            a = o["action"]
+            side = o.get("side", "short") if is_structure else "short"
+            leg = {"strike": float(o["strike"] or 0.0), "right": o["right"],
+                   "expiry": o["expiry"], "side": side}
+            if a in ("open", "roll_open", "sell_put", "sell_call"):
+                realized += (o["price"] if side == "short" else -o["price"]) * mult
+                open_legs.append(leg)
+                entry_px = px
+            elif a in ("close", "roll_close"):
+                realized -= (o["price"] if side == "short" else -o["price"]) * mult
+                open_legs = [l for l in open_legs
+                             if not (l["strike"] == leg["strike"] and l["right"] == leg["right"]
+                                     and l["side"] == side)]
+            elif a == "settle":
+                realized -= (o["price"] if side == "short" else -o["price"]) * mult
+                open_legs = []
+            elif a == "expired":
+                open_legs = []
+            elif a == "assigned":
+                realized -= leg["strike"] * mult
+                shares += int(mult)
+                open_legs = []
+            elif a == "called_away":
+                realized += leg["strike"] * mult
+                shares -= int(mult)
+                open_legs = []
+        if open_legs:
+            req = _requirement(open_legs, entry_px, mult)
+            if req is None:
+                undefined_risk = True
+            else:
+                capital = max(capital, req)
+        liability = 0.0
+        if open_legs:
+            ch_d = chains[chains["date"] == d]
+            for leg in open_legs:
+                row = ch_d[(ch_d["expiry"] == leg["expiry"])
+                           & (ch_d["strike"] == leg["strike"])
+                           & (ch_d["right"] == leg["right"])]
+                if len(row):
+                    m = float(row.iloc[0]["mid"])
+                    liability += m if leg["side"] == "short" else -m
+        values.append(realized + shares * px - liability * mult)
+    equity = pd.Series(values, index=df.index)
+    return equity, (None if undefined_risk else capital)

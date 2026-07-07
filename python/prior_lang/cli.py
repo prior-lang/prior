@@ -181,6 +181,18 @@ def _cmd_backtest(args) -> int:
             ("Stock P&L", f"${res['stock_pnl']:,.2f} ({res['final_shares']} shares held at end)"),
             ("Net P&L", f"${res['net_pnl']:,.2f}"),
         ]
+        if res.get("capital_base"):
+            rows += [
+                ("Capital base (max collateral)", f"${res['capital_base']:,.2f}"),
+                ("Total return on collateral", f"{res['total_return_pct']}%"),
+                ("Sharpe", res["sharpe"]),
+                ("Max drawdown", f"{res['max_drawdown_pct']}%"),
+            ]
+        else:
+            rows.append(("Return / Sharpe / drawdown", "n/a — undefined-risk structure has no fixed collateral base"))
+        if args.equity:
+            res["equity"].rename("equity_pnl").to_csv(args.equity, header=True, index_label="date")
+            rows.append(("Equity curve written to", args.equity))
         width = max(len(k) for k, _ in rows)
         for k, v in rows:
             print(f"  {k:<{width}}  {v}")
@@ -216,6 +228,8 @@ def _cmd_backtest(args) -> int:
                 "ticker column (one stacked set of rows per ticker)"
             )
         res = run_pair_backtest(strategy, df)
+        if args.equity:
+            res["equity"].rename("equity").to_csv(args.equity, header=True, index_label="date")
         print(f"{name} — {res['pair']} spread (price {res['form']}), {res['bars']} bars from {args.data}")
         rows = [
             ("Total return", f"{res['total_return_pct']}%"),
@@ -247,6 +261,8 @@ def _cmd_backtest(args) -> int:
                 "needs a ticker column (one stacked set of rows per ticker)"
             )
         res = run_ranking_backtest(strategy, df)
+        if args.equity:
+            res["equity"].rename("equity").to_csv(args.equity, header=True, index_label="date")
         print(f"{name} — portfolio of {res['tickers']} tickers, {res['bars']} bars from {args.data}")
         rows = [
             ("Total return", f"{res['total_return_pct']}%"),
@@ -277,6 +293,11 @@ def _cmd_backtest(args) -> int:
         return 0
 
     if "ticker" in df.columns:
+        if args.equity:
+            raise SystemExit(
+                "--equity writes one curve — universe runs are independent per-ticker; "
+                "scope to one instrument for the export"
+            )
         # Multi-ticker file: independent per-ticker runs across the universe.
         res = run_universe_backtest(strategy, df)
         rows = res["per_ticker"]
@@ -319,6 +340,8 @@ def _cmd_backtest(args) -> int:
         )
 
     result = run_backtest(strategy, df)
+    if args.equity:
+        result["equity"].rename("equity").to_csv(args.equity, header=True, index_label="date")
     print(f"{name} — {result['bars']} bars from {args.data}")
     rows = [
         ("Total return", f"{result['total_return_pct']}%"),
@@ -478,6 +501,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--cloud", action="store_true", help="run against hosted full-history data (coming soon)")
     p.add_argument("--trades", action="store_true", help="print the per-trade log: entry/exit, direction, bars held, return, and which exit fired")
     p.add_argument("--chains", help="your own option chain data for options strategies (date, expiry, strike, right, delta, mid)")
+    p.add_argument("--equity", help="write the daily equity curve to this CSV (chart it with anything)")
     p.add_argument("--ticker", help="which underlying to use when the data file is multi-ticker (options strategies)")
     p.set_defaults(fn=_cmd_backtest)
 

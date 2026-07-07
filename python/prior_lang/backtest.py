@@ -224,6 +224,7 @@ def run_backtest(strategy: dict, df, mask=None) -> dict:
 
     return {
         "bars": len(df),
+        "equity": equity,
         "total_return_pct": round(total_return * 100, 2),
         "buy_hold_return_pct": round(float(closes[-1] / closes[0] - 1) * 100, 2),
         "cagr_pct": round(cagr * 100, 2),
@@ -373,6 +374,7 @@ def run_pair_backtest(strategy: dict, df) -> dict:
 
     return {
         "pair": f"{a}/{b}",
+        "equity": equity,
         "form": form,
         "bars": len(signals),
         "total_return_pct": round(total_return * 100, 2),
@@ -445,6 +447,7 @@ def run_ranking_backtest(strategy: dict, df) -> dict:
 
     return {
         "bars": len(closes),
+        "equity": equity,
         "tickers": len(panel),
         "total_return_pct": round(total_return * 100, 2),
         "equal_weight_universe_pct": round(bench_total * 100, 2),
