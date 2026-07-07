@@ -1,0 +1,16 @@
+# Defined-risk premium selling. Sell the ~25-delta put, buy the wing 5
+# strike points lower: max loss is capped at the width minus the credit,
+# which is why this is the r/thetagang starter structure. Manage at 50%
+# of the credit or 7 days out, whichever comes first.
+
+strategy "Bull Put Spread on SPY"
+
+universe $SPY
+
+when [rsi] < 60
+  write [put_spread delta=25 width=5 dte=30]
+
+close at [profit 50%]
+  or [dte 7]
+
+risk [contracts 2]
