@@ -176,7 +176,7 @@ def _cmd_backtest(args) -> int:
                 "ticker column (one stacked set of rows per ticker)"
             )
         res = run_pair_backtest(strategy, df)
-        print(f"{name} — {res['form']} spread {res['pair']}, {res['bars']} bars from {args.data}")
+        print(f"{name} — {res['pair']} spread (price {res['form']}), {res['bars']} bars from {args.data}")
         rows = [
             ("Total return", f"{res['total_return_pct']}%"),
             ("CAGR", f"{res['cagr_pct']}%"),

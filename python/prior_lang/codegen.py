@@ -1702,9 +1702,9 @@ PAIR = ({a!r}, {b!r}, {form!r})
 
 
 def {fn}(panel):
-    """Signals on the {form} spread {a}/{b}. A +1 spread position means
-    long {a} / short {b} in equal dollar legs; -1 mirrors; 0 is flat
-    both legs."""
+    """Signals on the {a}/{b} spread (price {form} of the legs). A +1
+    spread position means long {a} / short {b} in equal dollar legs;
+    -1 mirrors; 0 is flat both legs."""
     leg_a = panel[{a!r}]["close"].astype(float)
     leg_b = panel[{b!r}]["close"].astype(float)
     leg_a, leg_b = leg_a.align(leg_b, join="inner")

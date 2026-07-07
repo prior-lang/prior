@@ -174,11 +174,16 @@ def explain_strategy(strategy: dict) -> str:
         lines.append(f"Trades {label} on {strategy.get('timeframe', '1d')} bars.")
     elif uni.get("type") == "pair":
         a, b = [str(t).upper() for t in uni.get("tickers", ["?", "?"])]
-        form = "ratio" if uni.get("form", "ratio") == "ratio" else "difference"
+        form = (
+            f"the price ratio {a}/{b}"
+            if uni.get("form", "ratio") == "ratio"
+            else f"the price difference {a} minus {b}"
+        )
         lines.append(
-            f"Trades the {a}/{b} {form} spread on {strategy.get('timeframe', '1d')} bars — "
-            f"a long position is long {a} / short {b} in equal dollar legs; a short "
-            "position mirrors. Conditions and exits evaluate on the spread series itself."
+            f"Trades the spread between {a} and {b} ({form}) on "
+            f"{strategy.get('timeframe', '1d')} bars — a long position is long {a} / "
+            f"short {b} in equal dollar legs; a short position mirrors. Conditions "
+            "and exits evaluate on the spread series itself."
         )
     elif uni.get("type") == "dynamic":
         p = uni.get("params", {}) or {}

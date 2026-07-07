@@ -98,7 +98,8 @@ def test_percent_exits_banned_on_diff_spreads():
 def test_explain_names_the_legs():
     from prior_lang.explain import explain_strategy
     text = explain_strategy(prior_lang.compile_source(SRC))
-    assert "GLD/GDX ratio spread" in text
+    assert "spread between GLD and GDX" in text
+    assert "price ratio" in text
     assert "equal dollar legs" in text
 
 
