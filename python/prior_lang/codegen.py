@@ -1239,6 +1239,237 @@ def generate_mixed_code(
 
 
 
+OPTION_STRUCTURES = ("put_spread", "call_spread", "iron_condor", "straddle", "strangle")
+
+
+def _structure_build_snippet(otype: str, delta: float, width: float, dte: int) -> str:
+    """The per-type leg-construction body for _prior_build(ch_d, px, d)."""
+    if otype == "put_spread":
+        return f'''    short = _prior_pick(ch_d, "P", {delta}, {dte}, d)
+    if short is None:
+        return None
+    wing = _prior_wing(ch_d, short["expiry"], "P", short["strike"] - {width}, "below")
+    if wing is None or wing["strike"] >= short["strike"]:
+        return None
+    return [dict(short, side="short"), dict(wing, side="long")]'''
+    if otype == "call_spread":
+        return f'''    short = _prior_pick(ch_d, "C", {delta}, {dte}, d)
+    if short is None:
+        return None
+    wing = _prior_wing(ch_d, short["expiry"], "C", short["strike"] + {width}, "above")
+    if wing is None or wing["strike"] <= short["strike"]:
+        return None
+    return [dict(short, side="short"), dict(wing, side="long")]'''
+    if otype == "iron_condor":
+        return f'''    p_short = _prior_pick(ch_d, "P", {delta}, {dte}, d)
+    if p_short is None:
+        return None
+    exp = p_short["expiry"]
+    p_wing = _prior_wing(ch_d, exp, "P", p_short["strike"] - {width}, "below")
+    c_short = _prior_pick_at(ch_d, exp, "C", {delta})
+    if p_wing is None or c_short is None:
+        return None
+    c_wing = _prior_wing(ch_d, exp, "C", c_short["strike"] + {width}, "above")
+    if c_wing is None or p_wing["strike"] >= p_short["strike"] or c_wing["strike"] <= c_short["strike"]:
+        return None
+    return [dict(p_short, side="short"), dict(p_wing, side="long"),
+            dict(c_short, side="short"), dict(c_wing, side="long")]'''
+    if otype == "straddle":
+        return f'''    anchor = _prior_pick(ch_d, "P", 50, {dte}, d)
+    if anchor is None:
+        return None
+    exp = anchor["expiry"]
+    put = _prior_atm(ch_d, exp, "P", px)
+    call = _prior_atm(ch_d, exp, "C", px)
+    if put is None or call is None or put["strike"] != call["strike"]:
+        return None
+    return [dict(put, side="short"), dict(call, side="short")]'''
+    # strangle
+    return f'''    put = _prior_pick(ch_d, "P", {delta}, {dte}, d)
+    if put is None:
+        return None
+    call = _prior_pick_at(ch_d, put["expiry"], "C", {delta})
+    if call is None or call["strike"] <= put["strike"]:
+        return None
+    return [dict(put, side="short"), dict(call, side="short")]'''
+
+
+def _generate_structure_code(
+    otype: str, opt: Dict[str, Any], mgmt: Dict[str, Any],
+    metadata: str, gate_fn: str, gate_call: str,
+) -> str:
+    """Emit generate_option_orders for a multi-leg credit structure.
+
+    Orders come out one row per leg with `side` (short/long) and `group`
+    (structure instance id). Expiry settles CASH by net intrinsic — no
+    share-assignment modeling on spreads; that approximation is stated
+    in the emitted docstring."""
+    delta = float(opt.get("delta", 20 if otype in ("iron_condor", "strangle") else 25))
+    width = float(opt.get("width", 5))
+    dte = int(opt.get("dte", 45))
+    profit = float(mgmt.get("profit_pct") or 0.0)
+    loss = float(mgmt.get("loss_pct") or 0.0)
+    close_dte = int(mgmt.get("close_dte") or 0)
+    roll_dte = int(mgmt.get("roll_dte") or 0)
+    build_body = _structure_build_snippet(otype, delta, width, dte)
+    desc = otype.replace("_", " ")
+
+    return f'''{metadata}{gate_fn}def _prior_pick(ch_d, right, target_delta, target_dte, d):
+    """Nearest expiry >= DTE, then nearest |delta|; deterministic ties."""
+    cands = ch_d[ch_d["right"] == right]
+    if len(cands) == 0:
+        return None
+    days = (pd.to_datetime(cands["expiry"]) - d).dt.days
+    cands = cands[days >= target_dte]
+    if len(cands) == 0:
+        return None
+    days = (pd.to_datetime(cands["expiry"]) - d).dt.days
+    best_exp = cands.loc[days.idxmin(), "expiry"]
+    cands = cands[cands["expiry"] == best_exp].copy()
+    cands["_dgap"] = (cands["delta"].abs() - target_delta).abs()
+    cands = cands.sort_values(
+        ["_dgap", "strike"], ascending=[True, right == "P"]
+    )
+    row = cands.iloc[0]
+    return {{"expiry": row["expiry"], "strike": float(row["strike"]),
+             "right": right, "mid": float(row["mid"])}}
+
+
+def _prior_pick_at(ch_d, expiry, right, target_delta):
+    """Nearest |delta| within one expiry."""
+    cands = ch_d[(ch_d["expiry"] == expiry) & (ch_d["right"] == right)].copy()
+    if len(cands) == 0:
+        return None
+    cands["_dgap"] = (cands["delta"].abs() - target_delta).abs()
+    cands = cands.sort_values(["_dgap", "strike"], ascending=[True, right == "P"])
+    row = cands.iloc[0]
+    return {{"expiry": row["expiry"], "strike": float(row["strike"]),
+             "right": right, "mid": float(row["mid"])}}
+
+
+def _prior_wing(ch_d, expiry, right, strike_target, direction):
+    """Protective wing: the listed strike nearest the target, never
+    closer to the money than asked (at-or-below for puts, at-or-above
+    for calls)."""
+    cands = ch_d[(ch_d["expiry"] == expiry) & (ch_d["right"] == right)]
+    if direction == "below":
+        cands = cands[cands["strike"] <= strike_target + 1e-9]
+        cands = cands.sort_values("strike", ascending=False)
+    else:
+        cands = cands[cands["strike"] >= strike_target - 1e-9]
+        cands = cands.sort_values("strike", ascending=True)
+    if len(cands) == 0:
+        return None
+    row = cands.iloc[0]
+    return {{"expiry": row["expiry"], "strike": float(row["strike"]),
+             "right": right, "mid": float(row["mid"])}}
+
+
+def _prior_atm(ch_d, expiry, right, px):
+    """The strike nearest the spot within one expiry."""
+    cands = ch_d[(ch_d["expiry"] == expiry) & (ch_d["right"] == right)].copy()
+    if len(cands) == 0:
+        return None
+    cands["_gap"] = (cands["strike"] - px).abs()
+    cands = cands.sort_values(["_gap", "strike"])
+    row = cands.iloc[0]
+    return {{"expiry": row["expiry"], "strike": float(row["strike"]),
+             "right": right, "mid": float(row["mid"])}}
+
+
+def _prior_build(ch_d, px, d):
+{build_body}
+
+
+def generate_option_orders(df, chains):
+    """Auto-generated options strategy: short {desc}, ~{delta:g}-delta,
+    width {width:g}, ~{dte}-DTE. One structure at a time; management on
+    the NET mid vs the net credit; expiry settles CASH by net intrinsic
+    (no share-assignment modeling on multi-leg structures). Orders: one
+    row per leg with side (short/long) and group (structure id)."""
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("options strategies need datetime-indexed bars")
+{gate_call}
+    orders = []
+    legs = None
+    credit = 0.0
+    gid = 0
+
+    def emit(d, action, legs_, prices):
+        for leg, pr in zip(legs_, prices):
+            orders.append({{
+                "date": d, "action": action, "right": leg["right"],
+                "strike": leg["strike"], "expiry": leg["expiry"],
+                "side": leg["side"], "price": pr, "group": gid,
+            }})
+
+    def net_of(prices, legs_):
+        return sum(p if l["side"] == "short" else -p for p, l in zip(prices, legs_))
+
+    for d in df.index:
+        ch_d = chains[chains["date"] == d]
+        px = float(df.at[d, "close"])
+
+        if legs is not None:
+            prices = []
+            for leg in legs:
+                row = ch_d[(ch_d["expiry"] == leg["expiry"])
+                           & (ch_d["strike"] == leg["strike"])
+                           & (ch_d["right"] == leg["right"])]
+                prices.append(float(row.iloc[0]["mid"]) if len(row) else None)
+            dte_left = (pd.to_datetime(legs[0]["expiry"]) - d).days
+            have_mids = all(p is not None for p in prices)
+            net = net_of(prices, legs) if have_mids else None
+            closed = False
+            if net is not None:
+                if {profit} > 0 and net <= credit * (1 - {profit} / 100.0):
+                    emit(d, "close", legs, prices)
+                    closed = True
+                elif {loss} > 0 and net >= credit * (1 + {loss} / 100.0):
+                    emit(d, "close", legs, prices)
+                    closed = True
+                elif {close_dte} > 0 and dte_left <= {close_dte}:
+                    emit(d, "close", legs, prices)
+                    closed = True
+                elif {roll_dte} > 0 and dte_left <= {roll_dte}:
+                    emit(d, "roll_close", legs, prices)
+                    new_legs = _prior_build(ch_d, px, d)
+                    if new_legs is not None:
+                        gid += 1
+                        legs = new_legs
+                        new_prices = [l["mid"] for l in legs]
+                        credit = net_of(new_prices, legs)
+                        emit(d, "roll_open", legs, new_prices)
+                        continue
+                    closed = True
+            if closed:
+                legs = None
+            elif dte_left <= 0:
+                intr = []
+                for leg in legs:
+                    if leg["right"] == "P":
+                        intr.append(max(0.0, leg["strike"] - px))
+                    else:
+                        intr.append(max(0.0, px - leg["strike"]))
+                emit(d, "settle", legs, intr)
+                legs = None
+
+        if legs is None and bool(gate.get(d, False)):
+            new_legs = _prior_build(ch_d, px, d)
+            if new_legs is not None:
+                gid += 1
+                legs = new_legs
+                prices = [l["mid"] for l in legs]
+                credit = net_of(prices, legs)
+                if credit > 0:
+                    emit(d, "open", legs, prices)
+                else:
+                    legs = None
+
+    return pd.DataFrame(orders, columns=["date", "action", "right", "strike", "expiry", "side", "price", "group"])
+'''
+
+
 def generate_options_code(options: Dict[str, Any], risk: Dict[str, Any] | None = None) -> str:
     """Emit generate_option_orders(df, chains) for an options strategy.
 
@@ -1289,6 +1520,9 @@ def generate_options_code(options: Dict[str, Any], risk: Dict[str, Any] | None =
             f"    return ({expr}).fillna(False)\n\n\n"
         )
         gate_call = "    gate = _prior_gate(df)\n"
+
+    if opt.get("type") in OPTION_STRUCTURES:
+        return _generate_structure_code(opt["type"], opt, mgmt, metadata, gate_fn, gate_call)
 
     if form == "wheel":
         put_enabled = "True"
