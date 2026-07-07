@@ -140,7 +140,8 @@ def run_options_backtest(strategy: dict, df, chains, contract_fee: float = 0.0) 
     # Stock P&L = everything cash saw beyond the option cycles, plus the mark
     stock_pnl = (cash - option_pnl) + stock_mark
 
-    equity, capital = _mark_daily(pd, df, chains, orders, mult, is_structure)
+    equity, capital = _mark_daily(pd, df, chains, orders, mult, is_structure,
+                                  contract_fee * contracts)
 
     total_return_pct = sharpe = max_dd_pct = None
     if capital and capital > 0:
@@ -196,7 +197,7 @@ def _requirement(legs, entry_px, mult) -> float | None:
     return req
 
 
-def _mark_daily(pd, df, chains, orders, mult, is_structure):
+def _mark_daily(pd, df, chains, orders, mult, is_structure, fee_per_fill: float = 0.0):
     """Daily mark-to-market equity (P&L in dollars, starts at 0) and the
     max collateral requirement observed (the capital base for returns)."""
     realized = 0.0
@@ -218,11 +219,11 @@ def _mark_daily(pd, df, chains, orders, mult, is_structure):
             leg = {"strike": float(o["strike"] or 0.0), "right": o["right"],
                    "expiry": o["expiry"], "side": side}
             if a in ("open", "roll_open", "sell_put", "sell_call"):
-                realized += (o["price"] if side == "short" else -o["price"]) * mult
+                realized += (o["price"] if side == "short" else -o["price"]) * mult - fee_per_fill
                 open_legs.append(leg)
                 entry_px = px
             elif a in ("close", "roll_close"):
-                realized -= (o["price"] if side == "short" else -o["price"]) * mult
+                realized -= (o["price"] if side == "short" else -o["price"]) * mult + fee_per_fill
                 open_legs = [l for l in open_legs
                              if not (l["strike"] == leg["strike"] and l["right"] == leg["right"]
                                      and l["side"] == side)]

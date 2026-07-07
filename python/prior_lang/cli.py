@@ -248,10 +248,13 @@ def _cmd_backtest(args) -> int:
             if len(orders) > 60:
                 print("  (showing the last 60)")
             print(with_rows.to_string(index=False))
+        fee_note = (
+            f"commissions ${args.contract_fee:.2f}/contract per fill, no slippage"
+            if args.contract_fee else "no commissions or slippage"
+        )
         print(
-            "\nNote: fills at mid, one position at a time, no commissions or "
-            "slippage, no early\nassignment. Multi-leg structures settle cash by "
-            "net intrinsic at expiry."
+            f"\nNote: fills at mid, one position at a time, {fee_note}, no early\n"
+            "assignment. Multi-leg structures settle cash by net intrinsic at expiry."
         )
         return 0
 
