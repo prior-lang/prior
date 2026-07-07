@@ -105,6 +105,12 @@ class Program:
     mgmt_roll_terms: list = field(default_factory=list)
     scoped_ticker: str | None = None
     pair: tuple | None = None  # (ticker_a, ticker_b, "ratio"|"diff") from spread(...)
+    # Comments are formatting-only. Keyed by (statement_kind, occurrence)
+    # so the formatter can re-emit each block above its statement wherever
+    # canonical ordering places it; trailing_comments follow the last
+    # statement. Never parsed, never in the JSON.
+    comment_map: dict = field(default_factory=dict)
+    trailing_comments: list = field(default_factory=list)
     source_name: str = "<string>"
 
     def _metric_json(self, tag: TagNode) -> dict:
@@ -1007,11 +1013,41 @@ def _flatten(node, cur: _Cursor):
 
 # ── Statements ─────────────────────────────────────────────────────
 
+def _stmt_kind(ll) -> str:
+    """The anchor key for a logical line: its canonical first keyword,
+    with 'if' folded into 'when' and the half-exit forms kept distinct."""
+    kw = str(ll.tokens[0].value).lower()
+    if kw == "if":
+        kw = "when"
+    if kw in ("sell", "cover") and len(ll.tokens) > 1             and str(ll.tokens[1].value).lower() == "half":
+        kw = f"{kw} half"
+    return kw
+
+
 def parse_source(source: str, filename: str = "<string>") -> Program:
     prog = Program(source_name=filename)
     seen: set[str] = set()
 
-    for ll in tokenize(source):
+    standalone: list = []
+    lines = tokenize(source, comments_out=standalone)
+
+    # Anchor comment blocks to the statement that follows them.
+    counts: dict = {}
+    ci = 0
+    for ll in lines:
+        kind = _stmt_kind(ll)
+        idx = counts.get(kind, 0)
+        counts[kind] = idx + 1
+        block: list = []
+        while ci < len(standalone) and standalone[ci][0] < ll.line:
+            block.append(standalone[ci][1])
+            ci += 1
+        block.extend(ll.trailing_comments)
+        if block:
+            prog.comment_map[(kind, idx)] = block
+    prog.trailing_comments = [text for _line, text in standalone[ci:]]
+
+    for ll in lines:
         cur = _Cursor(ll)
         head = cur.next()
 

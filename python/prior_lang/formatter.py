@@ -69,22 +69,49 @@ def _term(t) -> str:
     return f"{_operand(t.left)} {cmp} {_operand(t.right)}"
 
 
-def format_program(prog: Program) -> str:
+def format_program(prog: Program, include_comments: bool = True) -> str:
     blocks: list[str] = []
+
+    # Comments re-attach to their statements wherever canonical ordering
+    # places them; anything unmatched is appended at the end, never lost.
+    _counts: dict = {}
+    _used: set = set()
+    _cmap = getattr(prog, "comment_map", {}) or {}
+
+    def com(kind: str, text: str) -> str:
+        if not include_comments:
+            return text
+        idx = _counts.get(kind, 0)
+        _counts[kind] = idx + 1
+        block = _cmap.get((kind, idx))
+        if not block:
+            return text
+        _used.add((kind, idx))
+        return "\n".join(block) + "\n" + text
+
+    def finish() -> str:
+        out = "\n\n".join(blocks) + "\n"
+        if include_comments:
+            leftovers = [line for key, blk in _cmap.items() if key not in _used
+                         for line in blk]
+            leftovers += list(getattr(prog, "trailing_comments", []) or [])
+            if leftovers:
+                out += "\n" + "\n".join(leftovers) + "\n"
+        return out
 
     header: list[str] = []
     if prog.name:
-        header.append(f'strategy "{prog.name}"')
+        header.append(com("strategy", f'strategy "{prog.name}"'))
     if header:
         blocks.append("\n".join(header))
 
     setup: list[str] = []
     if prog.universe_tag is not None:
-        setup.append(f"universe {_tag(prog.universe_tag)}")
+        setup.append(com("universe", f"universe {_tag(prog.universe_tag)}"))
     elif prog.universe_tickers:
-        setup.append("universe " + " ".join(f"${t}" for t in prog.universe_tickers))
+        setup.append(com("universe", "universe " + " ".join(f"${t}" for t in prog.universe_tickers)))
     if prog.timeframe:
-        setup.append(f"timeframe {prog.timeframe}")
+        setup.append(com("timeframe", f"timeframe {prog.timeframe}"))
     if setup:
         blocks.append("\n".join(setup))
 
@@ -94,26 +121,26 @@ def format_program(prog: Program) -> str:
             if prog.opt_entry_terms:
                 joiner = " and " if prog.opt_entry_logic == "all" else " or "
                 head += "\n  where " + joiner.join(_term(t) for t in prog.opt_entry_terms)
-            blocks.append(head)
+            blocks.append(com("wheel", head))
         else:
             joiner = " and " if prog.opt_entry_logic == "all" else " or "
             entry = "when " + joiner.join(_term(t) for t in prog.opt_entry_terms)
             entry += f"\n  write {_tag(prog.opt_option)}"
-            blocks.append(entry)
+            blocks.append(com("when", entry))
         if prog.mgmt_close_terms:
             lines = [f"close at {_tag(prog.mgmt_close_terms[0])}"]
             for t in prog.mgmt_close_terms[1:]:
                 lines.append(f"  or {_tag(t)}")
-            blocks.append("\n".join(lines))
+            blocks.append(com("close", "\n".join(lines)))
         if prog.mgmt_roll_terms:
-            blocks.append(f"roll at {_tag(prog.mgmt_roll_terms[0])}")
+            blocks.append(com("roll", f"roll at {_tag(prog.mgmt_roll_terms[0])}"))
         if prog.risk_tags:
-            blocks.append("risk " + " ".join(_tag(t) for t in prog.risk_tags))
-        return "\n\n".join(blocks) + "\n"
+            blocks.append(com("risk", "risk " + " ".join(_tag(t) for t in prog.risk_tags)))
+        return finish()
 
     if prog.rank_select is not None:
         if prog.rebalance:
-            setup.append(f"rebalance {prog.rebalance}")
+            setup.append(com("rebalance", f"rebalance {prog.rebalance}"))
             blocks[-1] = "\n".join(setup)  # setup was already appended; refresh
         hold = f"hold {prog.rank_select} {int(prog.rank_count)} by {_tag(prog.rank_metric)}"
         if prog.rank_where_terms:
@@ -121,10 +148,10 @@ def format_program(prog: Program) -> str:
             hold += "\n  where " + joiner.join(_term(t) for t in prog.rank_where_terms)
         if prog.rank_weight_metric is not None:
             hold += f"\n  weighted by {_tag(prog.rank_weight_metric)}"
-        blocks.append(hold)
+        blocks.append(com("hold", hold))
         if prog.risk_tags:
-            blocks.append("risk " + " ".join(_tag(t) for t in prog.risk_tags))
-        return "\n\n".join(blocks) + "\n"
+            blocks.append(com("risk", "risk " + " ".join(_tag(t) for t in prog.risk_tags)))
+        return finish()
 
     default_action = "short" if prog.direction == "short" else "buy"
     rules = prog.rules or [{"logic": prog.entry_logic, "terms": prog.entry_terms,
@@ -136,7 +163,7 @@ def format_program(prog: Program) -> str:
         entry = "when " + joiner.join(_term(t) for t in rule["terms"])
         if rule["sizing"] is not None:
             entry += f"\n  {action} {_tag(rule['sizing'])}"
-        blocks.append(entry)
+        blocks.append(com("when", entry))
 
     exit_kw = "cover" if prog.direction == "short" else "sell"
     if prog.partial_terms:
@@ -144,25 +171,25 @@ def format_program(prog: Program) -> str:
         p_lines = [f"{kw} half when {_term(prog.partial_terms[0])}"]
         for t in prog.partial_terms[1:]:
             p_lines.append(f"  or {_term(t)}")
-        blocks.append("\n".join(p_lines))
+        blocks.append(com(f"{kw} half", "\n".join(p_lines)))
     if prog.partial_short_terms:
         p_lines = [f"cover half when {_term(prog.partial_short_terms[0])}"]
         for t in prog.partial_short_terms[1:]:
             p_lines.append(f"  or {_term(t)}")
-        blocks.append("\n".join(p_lines))
+        blocks.append(com("cover half", "\n".join(p_lines)))
     if prog.exit_terms:
         kw = "sell" if prog.direction == "mixed" else exit_kw
         exit_lines = [f"{kw} when {_term(prog.exit_terms[0])}"]
         for t in prog.exit_terms[1:]:
             exit_lines.append(f"  or {_term(t)}")
-        blocks.append("\n".join(exit_lines))
+        blocks.append(com(kw, "\n".join(exit_lines)))
     if prog.exit_short_terms:
         exit_lines = [f"cover when {_term(prog.exit_short_terms[0])}"]
         for t in prog.exit_short_terms[1:]:
             exit_lines.append(f"  or {_term(t)}")
-        blocks.append("\n".join(exit_lines))
+        blocks.append(com("cover", "\n".join(exit_lines)))
 
     if prog.risk_tags:
-        blocks.append("risk " + " ".join(_tag(t) for t in prog.risk_tags))
+        blocks.append(com("risk", "risk " + " ".join(_tag(t) for t in prog.risk_tags)))
 
-    return "\n\n".join(blocks) + "\n"
+    return finish()

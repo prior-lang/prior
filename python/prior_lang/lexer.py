@@ -45,10 +45,12 @@ class LogicalLine:
     line: int              # first physical line number (1-based)
     source: str            # first physical line text, for error rendering
     sources: dict[int, str] = field(default_factory=dict)  # line no → text
+    trailing_comments: list = field(default_factory=list)  # "# ..." on code lines
 
 
-def _lex_line(text: str, lineno: int) -> list[Token]:
+def _lex_line(text: str, lineno: int) -> tuple[list[Token], str | None]:
     tokens: list[Token] = []
+    comment: str | None = None
     i = 0
     n = len(text)
     while i < n:
@@ -57,6 +59,7 @@ def _lex_line(text: str, lineno: int) -> list[Token]:
             i += 1
             continue
         if ch == "#":
+            comment = text[i:].rstrip()
             break  # comment to end of line
         col = i
 
@@ -145,16 +148,25 @@ def _lex_line(text: str, lineno: int) -> list[Token]:
         raise PriorError(
             f"unexpected character {ch!r}", line=lineno, col=col, source_line=text,
         )
-    return tokens
+    return tokens, comment
 
 
-def tokenize(source: str) -> list[LogicalLine]:
-    """Lex the whole file into logical lines (continuations merged)."""
+def tokenize(source: str, comments_out: list | None = None) -> list[LogicalLine]:
+    """Lex the whole file into logical lines (continuations merged).
+
+    `comments_out`, when given, collects standalone comment lines as
+    (line_number, text); comments trailing code attach to their logical
+    line's `trailing_comments`. Comments are formatting-only — they never
+    reach the parser's token stream."""
     logical: list[LogicalLine] = []
     for lineno, text in enumerate(source.splitlines(), start=1):
-        toks = _lex_line(text, lineno)
+        toks, comment = _lex_line(text, lineno)
         if not toks:
+            if comment is not None and comments_out is not None:
+                comments_out.append((lineno, comment))
             continue
+        if comment is not None and comments_out is not None:
+            pass  # attached below once we know which logical line this is
         first = toks[0]
         is_continuation = first.kind == "keyword" and first.value in ("and", "or", "buy", "short", "write", "where", "weighted")
         if is_continuation:
@@ -165,6 +177,10 @@ def tokenize(source: str) -> list[LogicalLine]:
                 )
             logical[-1].tokens.extend(toks)
             logical[-1].sources[lineno] = text
+            if comment is not None:
+                logical[-1].trailing_comments.append(comment)
         else:
             logical.append(LogicalLine(tokens=toks, line=lineno, source=text, sources={lineno: text}))
+            if comment is not None:
+                logical[-1].trailing_comments.append(comment)
     return logical

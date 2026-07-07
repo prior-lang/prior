@@ -81,11 +81,12 @@ def _cmd_fmt(args) -> int:
         src = sys.stdin.read()
         if (args.file or "").endswith(".json"):
             src = strategy_to_source(json.loads(src))
-        sys.stdout.write(format_program(parse_source(src, filename=args.file or "<stdin>")))
+        sys.stdout.write(format_program(parse_source(src, filename=args.file or "<stdin>"),
+                                        include_comments=not args.strip_comments))
         return 0
     if not args.file:
         raise SystemExit("prior fmt needs a file (or --stdin)")
-    canonical = format_program(_load_program(args.file))
+    canonical = format_program(_load_program(args.file), include_comments=not args.strip_comments)
     if args.write:
         Path(args.file).write_text(canonical)
         print(f"formatted {args.file}")
@@ -540,6 +541,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("file", nargs="?", help="path (optional with --stdin)")
     p.add_argument("--write", action="store_true", help="rewrite the file in place")
     p.add_argument("--stdin", action="store_true", help="read source from stdin, print canonical text")
+    p.add_argument("--strip-comments", dest="strip_comments", action="store_true", help="drop comments instead of preserving them")
     p.set_defaults(fn=_cmd_fmt)
 
     p = sub.add_parser("compile", help="emit runnable Python (or --json for the interchange format)")
