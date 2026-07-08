@@ -126,7 +126,8 @@ def get_run(token: str, run_id: int) -> dict:
 
 
 def checkout_url(token: str) -> str:
-    out = _http("POST", "/billing/checkout/create-session", {
+    # The license server's billing routes mount at the root (no /billing prefix)
+    out = _http("POST", "/checkout/create-session", {
         "plan": "prior_cloud",
         "success_url": UPGRADE_PAGE + "?checkout=success",
         "cancel_url": UPGRADE_PAGE + "?checkout=cancelled",

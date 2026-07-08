@@ -209,8 +209,8 @@ def _cmd_backtest_cloud(args) -> int:
         submitted = cloud.submit_backtest(token, source, params)
     except cloud.CloudError as e:
         if e.detail.get("error") == "taster_runs_exhausted":
+            # The server message already includes the upgrade command and URL
             print(e)
-            print(f"\nUpgrade: prior cloud upgrade  ({cloud.UPGRADE_PAGE})")
             return 1
         raise SystemExit(f"cloud submit failed: {e}")
 

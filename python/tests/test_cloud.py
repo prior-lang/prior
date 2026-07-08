@@ -148,8 +148,11 @@ def test_backtest_cloud_requires_login(capsys):
 
 def test_backtest_cloud_taster_exhausted(capsys):
     cloud.save_credentials({"token": "t"})
+    # Mirrors the real server message, which carries the upgrade command + URL
     err = cloud.CloudError(
-        "You've used your free cloud runs.",
+        "You've used your free cloud runs. PRIOR Cloud is $19/mo for 50 "
+        "full-history runs a day — run `prior cloud upgrade` or visit "
+        "https://autoquant.ai/prior/cloud",
         {"error": "taster_runs_exhausted"}, 402,
     )
     fake = _fake_http({("POST", "/prior/backtest"): err})
