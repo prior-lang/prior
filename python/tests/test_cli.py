@@ -163,6 +163,10 @@ def test_sample_dataset_runs_example_universe(capsys):
     assert "average" in out
 
 
-def test_backtest_cloud_stub(capsys):
-    assert main(["backtest", BOLLINGER, "--cloud"]) == 0
-    assert "coming soon" in capsys.readouterr().out.lower()
+def test_backtest_cloud_without_login_exits(tmp_path, monkeypatch):
+    # --cloud is live now; without credentials it must point at prior login
+    # (full cloud coverage lives in test_cloud.py)
+    from prior_lang import cloud
+    monkeypatch.setattr(cloud, "CRED_PATH", tmp_path / "credentials.json")
+    with pytest.raises(SystemExit, match="prior login"):
+        main(["backtest", BOLLINGER, "--cloud"])

@@ -121,13 +121,117 @@ def _cmd_explain(args) -> int:
     return 0
 
 
+def _cmd_login(args) -> int:
+    from . import cloud
+
+    email = args.email or input("email: ").strip()
+    if not email or "@" not in email:
+        raise SystemExit("that doesn't look like an email address")
+    try:
+        cloud.request_code(email)
+    except cloud.CloudError as e:
+        raise SystemExit(f"could not send the code: {e}")
+    print(f"Sent a 6-digit code to {email} (expires in 15 minutes).")
+    code = input("code: ").strip()
+    try:
+        out = cloud.verify_code(email, code)
+    except cloud.CloudError as e:
+        raise SystemExit(f"login failed: {e}")
+    q = out.get("quota") or {}
+    if q.get("tier") == "taster":
+        print(f"Signed in. {q.get('remaining', 0)} free cloud runs available — "
+              "try: prior backtest strategy.prior --cloud")
+    else:
+        print(f"Signed in on the {q.get('plan')} plan "
+              f"({q.get('remaining', '?')} cloud runs left today).")
+    return 0
+
+
+def _cmd_cloud(args) -> int:
+    from . import cloud
+
+    if args.action == "logout":
+        print("Signed out." if cloud.clear_credentials() else "You weren't signed in.")
+        return 0
+
+    token = cloud.require_token()
+    if args.action == "status":
+        try:
+            q = cloud.get_quota(token)
+        except cloud.CloudError as e:
+            raise SystemExit(f"could not fetch quota: {e}")
+        creds = cloud.load_credentials() or {}
+        print(f"Signed in as {creds.get('email', '?')} — plan: {q.get('plan')}")
+        if q.get("tier") == "taster":
+            print(f"  Free taster runs: {q.get('lifetime_used', 0)} used, "
+                  f"{q.get('remaining', 0)} left (lifetime)")
+            print(f"  More runs: prior cloud upgrade  ({cloud.UPGRADE_PAGE})")
+        else:
+            print(f"  Cloud runs today: {q.get('used_today', 0)} used, "
+                  f"{q.get('remaining', 0)} left (resets on a rolling 24h window)")
+        return 0
+
+    if args.action == "upgrade":
+        try:
+            url = cloud.checkout_url(token)
+        except cloud.CloudError as e:
+            raise SystemExit(f"could not start checkout: {e}\nYou can also subscribe at {cloud.UPGRADE_PAGE}")
+        print(f"Checkout: {url}")
+        try:
+            import webbrowser
+            webbrowser.open(url)
+        except Exception:
+            pass
+        return 0
+
+    raise SystemExit(f"unknown cloud action: {args.action}")
+
+
+def _cmd_backtest_cloud(args) -> int:
+    from . import cloud
+
+    token = cloud.require_token()
+    source = _read(args.file)
+    strategy = _load_program(args.file).to_json()  # local compile: fast, offline errors
+    name = strategy.get("name") or Path(args.file).stem
+
+    params = {
+        "capital": args.capital,
+        "fee_bps": float(args.fee_bps or 0.0),
+        "slippage_bps": float(args.slippage_bps or 0.0),
+        "timeframe": strategy.get("timeframe", "1d"),
+        "date_from": args.date_from,
+        "date_to": args.date_to,
+    }
+    params = {k: v for k, v in params.items() if v is not None}
+
+    try:
+        submitted = cloud.submit_backtest(token, source, params)
+    except cloud.CloudError as e:
+        if e.detail.get("error") == "taster_runs_exhausted":
+            print(e)
+            print(f"\nUpgrade: prior cloud upgrade  ({cloud.UPGRADE_PAGE})")
+            return 1
+        raise SystemExit(f"cloud submit failed: {e}")
+
+    q = submitted.get("quota") or {}
+    left = q.get("remaining")
+    print(f"run {submitted['run_id']} submitted"
+          + (f" ({left} runs left)" if left is not None else ""))
+
+    try:
+        body = cloud.wait_for_result(token, submitted["run_id"])
+    except cloud.CloudError as e:
+        raise SystemExit(str(e))
+
+    if body["status"] == "error":
+        raise SystemExit(f"cloud run failed: {body.get('error', 'unknown error')}")
+    return cloud.render_result(name, body, args)
+
+
 def _cmd_backtest(args) -> int:
     if args.cloud:
-        print(
-            "Cloud backtests (full history, intraday, full universes) are coming soon.\n"
-            "Local backtests run on your own data: prior backtest strategy.prior --data bars.csv"
-        )
-        return 0
+        return _cmd_backtest_cloud(args)
     if not args.data:
         raise SystemExit(
             "prior backtest needs bars: --data bars.csv (columns: date,open,high,low,close,volume)"
@@ -348,7 +452,7 @@ def _cmd_backtest(args) -> int:
         print(
             "\nNote: universes are today's constituents — long backtests inherit "
             "survivorship bias.\nPoint-in-time universes and full history: "
-            "prior backtest --cloud (coming soon)"
+            "prior backtest --cloud"
         )
         return 0
 
@@ -385,7 +489,7 @@ def _cmd_backtest(args) -> int:
         print(
             "\nNote: independent per-ticker runs (each gets the full allocation; "
             "max_positions does not apply across tickers).\n"
-            "Portfolio-level simulation on full-history data: prior backtest --cloud (coming soon)"
+            "Portfolio-level simulation on full-history data: prior backtest --cloud"
         )
         if args.trades:
             for r in sorted(rows, key=lambda x: x["ticker"]):
@@ -435,7 +539,7 @@ def _cmd_backtest(args) -> int:
         print("\nTrades:")
         _print_trades(trade_log(strategy, df))
     print()
-    print("Full-history + intraday data across whole universes: prior backtest --cloud (coming soon)")
+    print("Full-history + intraday data across whole universes: prior backtest --cloud")
     return 0
 
 
@@ -570,10 +674,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--ticker", help="which instrument to trace in a multi-ticker file")
     p.set_defaults(fn=_cmd_trace)
 
+    p = sub.add_parser("login", help="sign in to PRIOR Cloud with an email code (no password)")
+    p.add_argument("email", nargs="?", help="your email (omit to be prompted)")
+    p.set_defaults(fn=_cmd_login)
+
+    p = sub.add_parser("cloud", help="PRIOR Cloud account: status | upgrade | logout")
+    p.add_argument("action", choices=["status", "upgrade", "logout"])
+    p.set_defaults(fn=_cmd_cloud)
+
     p = sub.add_parser("backtest", help="run the strategy over a bars file and print metrics")
     p.add_argument("file")
     p.add_argument("--data", help="bars as CSV, Parquet, JSON, or JSONL (date,open,high,low,close,volume); add a ticker column to run a whole universe from one file")
-    p.add_argument("--cloud", action="store_true", help="run against hosted full-history data (coming soon)")
+    p.add_argument("--cloud", action="store_true", help="run on hosted full-history data (prior login first; free taster runs included)")
     p.add_argument("--trades", action="store_true", help="print the per-trade log: entry/exit, direction, bars held, return, and which exit fired")
     p.add_argument("--chains", help="your own option chain data for options strategies (date, expiry, strike, right, delta, mid)")
     p.add_argument("--equity", help="write the daily equity curve to this CSV (chart it with anything)")

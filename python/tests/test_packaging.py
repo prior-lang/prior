@@ -13,5 +13,8 @@ def test_pypi_readme_is_synced():
         "run: cp README.md python/prior_lang_README.md"
 
 
-def test_version_is_launch_grade():
-    assert prior_lang.__version__ == "0.7.0"
+def test_version_matches_pyproject():
+    # __init__.__version__ and pyproject must move together or PyPI lies
+    root = Path(__file__).parents[2]
+    pyproject = (root / "python" / "pyproject.toml").read_text()
+    assert f'version = "{prior_lang.__version__}"' in pyproject
