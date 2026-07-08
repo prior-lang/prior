@@ -187,6 +187,55 @@ def _cmd_cloud(args) -> int:
     raise SystemExit(f"unknown cloud action: {args.action}")
 
 
+def _cmd_deploy(args) -> int:
+    """Route the user to THEIR deployment path — this verb never executes
+    trades. Execution is local-first by design: strategies and broker keys
+    run on the user's machine (AutoQuant desktop, or the autoquant CLI on
+    a server), never on ours."""
+    from . import cloud
+
+    strategy = _load_program(args.file).to_json()  # validate before promising anything
+    name = strategy.get("name") or Path(args.file).stem
+
+    plan = None
+    creds = cloud.load_credentials()
+    if creds and creds.get("token"):
+        try:
+            plan = cloud.get_quota(creds["token"]).get("plan")
+        except cloud.CloudError:
+            plan = None
+
+    if plan in ("professional", "trial"):
+        print(f"Your plan includes live deployment — run {name!r} from the AutoQuant app:")
+        print(f"  1. Open AutoQuant desktop and sign in as {creds.get('email', 'your account')}")
+        print(f"  2. File → Open → {Path(args.file).name}")
+        print("  3. Deploy → paper first, real when it's earned it")
+        print("\nExecution is local: your strategy and broker keys never leave your machine.")
+        return 0
+
+    if plan in ("quant", "quant_lifetime"):
+        print(f"Your plan includes live deployment — two ways to run {name!r}:")
+        print("  Desktop: File → Open → your .prior file → Deploy")
+        print("  Headless: the autoquant CLI deploys on any server you own (24/7, no GUI)")
+        print("\nExecution is local-first: strategies and broker keys stay on machines you control.")
+        return 0
+
+    # Taster, prior_cloud, expired, or signed out: the honest pitch.
+    print(f"Deployment runs on YOUR machine through AutoQuant — local-first, so your")
+    print("strategy and broker keys never touch our servers.")
+    print()
+    print(f"Your account includes a 14-day trial with live paper trading:")
+    print(f"  {cloud.DEPLOY_PAGE}")
+    print()
+    print(f"Sign in with the same email as prior login and {Path(args.file).name} opens natively.")
+    try:
+        import webbrowser
+        webbrowser.open(cloud.DEPLOY_PAGE + "?src=cli")
+    except Exception:
+        pass
+    return 0
+
+
 def _cmd_backtest_cloud(args) -> int:
     from . import cloud
 
@@ -226,7 +275,10 @@ def _cmd_backtest_cloud(args) -> int:
 
     if body["status"] == "error":
         raise SystemExit(f"cloud run failed: {body.get('error', 'unknown error')}")
-    return cloud.render_result(name, body, args)
+    rc = cloud.render_result(name, body, args)
+    if not getattr(args, "as_json", False):
+        print(f"\nRun it live (paper or real): prior deploy {args.file}")
+    return rc
 
 
 def _cmd_backtest(args) -> int:
@@ -681,6 +733,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("cloud", help="PRIOR Cloud account: status | upgrade | logout")
     p.add_argument("action", choices=["status", "upgrade", "logout"])
     p.set_defaults(fn=_cmd_cloud)
+
+    p = sub.add_parser("deploy", help="run a strategy live (paper or real) — shows your path, executes nothing")
+    p.add_argument("file")
+    p.set_defaults(fn=_cmd_deploy)
 
     p = sub.add_parser("backtest", help="run the strategy over a bars file and print metrics")
     p.add_argument("file")

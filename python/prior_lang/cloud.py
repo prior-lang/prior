@@ -23,6 +23,7 @@ from pathlib import Path
 DEFAULT_URL = "https://license.autoquant.ai"
 CRED_PATH = Path.home() / ".prior" / "credentials.json"
 UPGRADE_PAGE = "https://autoquant.ai/prior/cloud"
+DEPLOY_PAGE = "https://autoquant.ai/prior/deploy"
 
 
 class CloudError(Exception):
