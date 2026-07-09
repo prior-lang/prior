@@ -1,10 +1,16 @@
-# PRIOR
+<p align="center">
+  <img src="assets/logo.png" width="140" alt="PRIOR logo">
+</p>
 
-[![PyPI](https://img.shields.io/pypi/v/prior-lang)](https://pypi.org/project/prior-lang/)
-[![Downloads](https://static.pepy.tech/badge/prior-lang)](https://pepy.tech/project/prior-lang)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+<h1 align="center">PRIOR</h1>
 
-**Your hypothesis, written down.**
+<p align="center"><strong>Your hypothesis, written down.</strong></p>
+
+<p align="center">
+  <a href="https://pypi.org/project/prior-lang/"><img src="https://img.shields.io/pypi/v/prior-lang" alt="PyPI"></a>
+  <a href="https://pepy.tech/project/prior-lang"><img src="https://static.pepy.tech/badge/prior-lang" alt="Downloads"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
+</p>
 
 PRIOR is a tiny declarative language for expressing trading strategies as testable hypotheses. A complete strategy fits in a few lines that read like the idea in your head:
 
