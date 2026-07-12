@@ -81,29 +81,26 @@ There is deliberately no options sample: real chain data cannot be redistributed
 
 Install: `pip install prior-lang` (add `[backtest]` for the backtester's pandas dependency).
 
-## Cloud backtests
+## Deploy to live trading
 
-The local backtester runs on the bars you bring. PRIOR Cloud runs the same
-strategy on hosted full history — a decade of daily bars, whole prebuilt
-universes, no data wrangling:
+The CLI validates, formats, explains, and backtests. To run a strategy live on
+paper or real money, deploy it through AutoQuant, which executes locally on your
+own machine and broker keys, so your strategy and keys never touch anyone's
+servers:
 
 ```
-prior login                                # email code, no password
-prior backtest strategy.prior --cloud
+prior deploy strategy.prior
 ```
 
-Free accounts include 3 taster runs. PRIOR Cloud is $19/mo for 50 runs a day
-(`prior cloud upgrade`, or see [autoquant.ai/prior/cloud](https://autoquant.ai/prior/cloud)).
-Cloud results are metrics, an equity curve, and a trade log — the CLI itself
-never receives licensed bar data, so the open-source tool stays a pure
-language tool.
+Every account includes a 14-day trial with live paper trading. See
+[autoquant.ai/prior/deploy](https://autoquant.ai/prior/deploy).
 
 ## Status
 
 Pre-1.0; syntax may change. Working today: the spec, the parser, the canonical
 formatter, the reference code generator, the English readback, a local
 reference backtester (bring your own CSV/Parquet bars), free sample data
-via `prior sample`, and hosted full-history backtests (`--cloud`).
+via `prior sample`, and a deploy handoff to AutoQuant for live trading.
 
 ## Editor support
 

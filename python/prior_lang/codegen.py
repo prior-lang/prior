@@ -1954,23 +1954,22 @@ def {fn}(panel):
 def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False, trace: bool = False) -> str:
     """Strategy JSON (the parser's output) → Python source string.
 
-    Cloud-only conditions (IV rank, earnings calendar, short interest)
-    refuse local compilation unless allow_cloud=True — the hosted runner
-    passes that after substituting its own evaluators.
+    Hosted-data conditions (IV rank, earnings calendar, short interest)
+    refuse local compilation unless allow_cloud=True. AutoQuant passes that
+    after substituting its own evaluators.
 
     trace=True (rules and mixed strategies) additionally emits
     generate_signals_traced, which records entries, partials, and which
     exit branch fired — the toolchain's answer to logging."""
     if not allow_cloud:
-        cloud = _find_cloud_only(strategy)
-        if cloud:
+        hosted = _find_cloud_only(strategy)
+        if hosted:
             from .errors import PriorError
-            names = ", ".join(sorted(set(cloud)))
+            names = ", ".join(sorted(set(hosted)))
             raise PriorError(
-                f"this strategy uses hosted-data conditions ({names}) — it "
+                f"this strategy uses hosted-data conditions ({names}). It "
                 "validates, formats, and explains here, but evaluation needs "
-                "data that only exists hosted. Backtest with --cloud (coming "
-                "soon) or in AutoQuant."
+                "data the offline CLI does not have. Run it in AutoQuant."
             )
     def _conds(lst):
         return [

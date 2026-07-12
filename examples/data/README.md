@@ -18,4 +18,4 @@ prior backtest examples/semis_trend_rider.prior      --data examples/data/sample
 
 For real research, bring your own bars (`--data` accepts CSV, Parquet,
 JSON, and JSONL from any source — broker exports, your own API pulls), or
-use the hosted full-history service when available (`--cloud`).
+run it in AutoQuant, where licensed full history is built in.

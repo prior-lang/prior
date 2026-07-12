@@ -191,10 +191,10 @@ _register(TagSpec(
     named={"period": _p("period", NUMBER, 14), "smooth": _p("smooth", NUMBER, 3)},
 ))
 
-# ── Cloud-only condition tags ──────────────────────────────────────
+# ── Hosted-data condition tags ─────────────────────────────────────
 # These parse, validate, format, and explain everywhere. Evaluation needs
-# data that only exists hosted (chain history, earnings calendars, short
-# interest), so local compilation refuses with a pointer to --cloud.
+# data the offline CLI does not have (chain history, earnings calendars,
+# short interest), so local compilation refuses with a pointer to AutoQuant.
 
 _register(TagSpec(
     name="ivrank", kind="condition", usage="operand",

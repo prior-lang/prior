@@ -131,7 +131,7 @@ def run_universe_backtest(strategy: dict, df, capital: float | None = None,
     These are independent per-instrument runs — each ticker gets the full
     hypothetical allocation, and risk guards like max_positions have no
     cross-ticker meaning here. Portfolio-level simulation with shared
-    capital is the reference runner's job (AutoQuant desktop / --cloud).
+    capital is the reference runner's job (AutoQuant desktop).
     """
     universe = resolve_universe_tickers(strategy)
     in_file = [str(t).upper() for t in df["ticker"].unique()]

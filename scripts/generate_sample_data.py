@@ -9,8 +9,8 @@ every prebuilt universe, so all example strategies run out of the box:
         --data examples/data/sample_universe.csv
 
 This is NOT market data. It exists so the toolchain is testable offline
-in seconds. For real research, bring your own bars (--data) or use the
-hosted full-history service when available (--cloud).
+in seconds. For real research, bring your own bars (--data) or run it in
+AutoQuant, where licensed full history is built in.
 
 Regenerate:  python scripts/generate_sample_data.py
 """

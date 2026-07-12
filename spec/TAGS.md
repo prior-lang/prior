@@ -126,9 +126,9 @@ Developers extend the vocabulary without touching the grammar: `prior_lang.plugi
 
 ---
 
-## Cloud-only condition tags
+## Hosted-data condition tags
 
-Syntax that parses, validates, formats, and explains everywhere — but whose evaluation needs data that only exists hosted. Local compilation refuses with a pointer to `--cloud` / AutoQuant; the hosted runtime injects the evaluators.
+Syntax that parses, validates, formats, and explains everywhere — but whose evaluation needs data the offline CLI does not have. Local compilation refuses with a pointer to AutoQuant, which injects the evaluators.
 
 | Tag | Use | Compiles to |
 |---|---|---|
