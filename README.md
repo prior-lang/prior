@@ -31,6 +31,40 @@ sell when $NVDA at [middle_bollinger]
 
 The name is Bayesian: a prior is your belief before you see the data. A `.prior` file is exactly that — your trading thesis, committed to writing, before the backtest runs.
 
+## Quickstart
+
+Install it. The `[backtest]` extra pulls in pandas for the backtester:
+
+```bash
+pip install 'prior-lang[backtest]'
+```
+
+Write a strategy. A whole strategy is a few lines. Save this as `momentum.prior`:
+
+```
+when $NVDA at [lower_bollinger std=1]
+  buy [5% portfolio]
+
+sell when $NVDA at [middle_bollinger]
+  or [stop 1.5%]
+  or [after 5 bars]
+```
+
+Grab free sample data (no account, no API keys) and backtest it, all in under a minute:
+
+```bash
+prior sample stocks
+prior backtest momentum.prior --data prior-samples/stocks_1d.csv.gz --trades
+```
+
+See exactly what it compiles to: the plain-English readback, the interchange JSON, and the generated Python.
+
+```bash
+prior explain momentum.prior
+```
+
+That is the whole loop. Point `prior backtest` at any OHLCV file (`date,open,high,low,close,volume`, CSV / Parquet / JSON) to test your own ideas, and see [The toolchain](#the-toolchain) below for every command.
+
 ## Why a language this small
 
 PRIOR is deliberately not a programming language. No variables, no loops, no user functions, no arithmetic. The vocabulary is a set of bracket tags, and each tag is a semantic macro that bundles what a competent quant means by the phrase:
