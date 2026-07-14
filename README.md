@@ -29,7 +29,7 @@ sell when $NVDA at [middle_bollinger]
   or [after 5 bars]
 ```
 
-The name is Bayesian: a prior is your belief before you see the data. A `.prior` file is exactly that — your trading thesis, committed to writing, before the backtest runs.
+The name is Bayesian: a prior is your belief before you see the data. A `.prior` file is exactly that, your trading thesis, committed to writing, before the backtest runs.
 
 ## Quickstart
 
@@ -110,7 +110,7 @@ prior trace strategy.prior --data bars.csv --date 2026-03-14
                                                  verdict on any bar
 ```
 
-Strategies are accepted as `.prior` text or as the interchange `.json` — every verb takes either, and `prior fmt strategy.json` converts JSON back into readable PRIOR text.
+Strategies are accepted as `.prior` text or as the interchange `.json`. Every verb takes either, and `prior fmt strategy.json` converts JSON back into readable PRIOR text.
 
 Try it immediately with real sample data (free, no account, no API keys):
 
@@ -129,7 +129,7 @@ prior backtest examples/eth_oversold_recovery.prior --data prior-samples/crypto_
 
 A backtest with `--trades` prints the metrics plus a full per-trade log. You see every entry and exit, bars held, return, and which exit actually fired (stop, target, or time), so no number is a black box.
 
-There is deliberately no options sample: real chain data cannot be redistributed under any free license. Options strategies — the wheel, cash-secured puts, covered calls, and multi-leg structures (put/call spreads, iron condors, straddles, strangles) — backtest locally on chains YOU bring (`prior backtest wheel.prior --data f.csv --chains chains.csv` — one row per contract per day: date, expiry, strike, right, delta, mid), or in AutoQuant where licensed chain data is built in. A bundled synthetic universe also ships in `examples/data/` for fully offline use.
+There is deliberately no options sample: real chain data cannot be redistributed under any free license. Options strategies (the wheel, cash-secured puts, covered calls, and multi-leg structures like put/call spreads, iron condors, straddles, strangles) backtest locally on chains YOU bring (`prior backtest wheel.prior --data f.csv --chains chains.csv`, one row per contract per day: date, expiry, strike, right, delta, mid), or in AutoQuant where licensed chain data is built in. A bundled synthetic universe also ships in `examples/data/` for fully offline use.
 
 Install: `pip install prior-lang` (add `[backtest]` for the backtester's pandas dependency).
 
@@ -158,26 +158,26 @@ via `prior sample`, and a deploy handoff to AutoQuant for live trading.
 
 The [VS Code extension](editors/vscode/) gives you syntax highlighting, tag completions with parameter docs, hovers that show what every tag expands to, live compiler diagnostics with quick fixes, and `prior fmt` as the document formatter.
 
-Install it from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=autoquant.prior-lang) — search "PRIOR" in the Extensions panel, or:
+Install it from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=autoquant.prior-lang). Search "PRIOR" in the Extensions panel, or:
 
 ```
 code --install-extension autoquant.prior-lang
 ```
 
-Highlighting, completions, and hovers work immediately. Diagnostics and formatting shell out to the CLI so the editor reports exactly what the compiler will say — `pip install prior-lang`, or point the `prior.command` setting at any environment that has it.
+Highlighting, completions, and hovers work immediately. Diagnostics and formatting shell out to the CLI so the editor reports exactly what the compiler will say. Install it with `pip install prior-lang`, or point the `prior.command` setting at any environment that has it.
 
 ## Documentation
 
 - **Guides and tutorials:** [autoquant.ai/prior](https://autoquant.ai/prior)
-- **Language specification:** [`spec/SPEC.md`](spec/SPEC.md) — the source of truth for implementers
-- **Tag reference:** [`spec/TAGS.md`](spec/TAGS.md) — every tag, its defaults, and exactly what it expands to
+- **Language specification:** [`spec/SPEC.md`](spec/SPEC.md): the source of truth for implementers
+- **Tag reference:** [`spec/TAGS.md`](spec/TAGS.md): every tag, its defaults, and exactly what it expands to
 
 ## Repository layout
 
 ```
 spec/SPEC.md         language specification (grammar, semantics, error contract)
 spec/TAGS.md         every tag: params, defaults, exact semantics, readback strings
-examples/*.prior     complete strategies, from one-liners to pairs trades — the executable spec
+examples/*.prior     complete strategies, from one-liners to pairs trades, the executable spec
 python/prior_lang/   the reference implementation (zero-dependency parser + CLI)
 editors/vscode/      VS Code extension: highlighting, completions, hovers, live diagnostics
 ```
