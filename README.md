@@ -12,6 +12,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
 </p>
 
+<p align="center">
+  <img src="assets/prior-backtest.gif" width="780" alt="Write a trading strategy in a few lines, run a real backtest in one command">
+</p>
+
 PRIOR is a tiny declarative language for expressing trading strategies as testable hypotheses. A complete strategy fits in a few lines that read like the idea in your head:
 
 ```prior
@@ -86,10 +90,6 @@ window sizes shrink with bar size because that is what the free sources allow.
 
 prior backtest examples/eth_oversold_recovery.prior --data prior-samples/crypto_1d.csv.gz
 ```
-
-<p align="center">
-  <img src="assets/prior-backtest.gif" width="780" alt="prior backtest --trades: metrics and a per-trade log showing which exit fired">
-</p>
 
 A backtest with `--trades` prints the metrics plus a full per-trade log. You see every entry and exit, bars held, return, and which exit actually fired (stop, target, or time), so no number is a black box.
 
