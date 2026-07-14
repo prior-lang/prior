@@ -41,6 +41,10 @@ strategy.prior  →  JSON strategy object  →  generated Python  →  backtest 
 
 PRIOR compiles to an open JSON interchange format, then to plain Python you can read, audit, and run. `prior explain` shows every layer, plus an English readback of what your strategy does. Nothing is magic.
 
+<p align="center">
+  <img src="assets/prior-compile.gif" width="760" alt="prior explain: English readback, interchange JSON, and the generated Python">
+</p>
+
 The reference runner is [AutoQuant](https://autoquant.ai), where PRIOR strategies scan live markets, backtest against full market history, and deploy to paper or live trading. The format is open; nothing prevents other runners.
 
 ## The toolchain
@@ -82,6 +86,12 @@ window sizes shrink with bar size because that is what the free sources allow.
 
 prior backtest examples/eth_oversold_recovery.prior --data prior-samples/crypto_1d.csv.gz
 ```
+
+<p align="center">
+  <img src="assets/prior-backtest.gif" width="780" alt="prior backtest --trades: metrics and a per-trade log showing which exit fired">
+</p>
+
+A backtest with `--trades` prints the metrics plus a full per-trade log. You see every entry and exit, bars held, return, and which exit actually fired (stop, target, or time), so no number is a black box.
 
 There is deliberately no options sample: real chain data cannot be redistributed under any free license. Options strategies — the wheel, cash-secured puts, covered calls, and multi-leg structures (put/call spreads, iron condors, straddles, strangles) — backtest locally on chains YOU bring (`prior backtest wheel.prior --data f.csv --chains chains.csv` — one row per contract per day: date, expiry, strike, right, delta, mid), or in AutoQuant where licensed chain data is built in. A bundled synthetic universe also ships in `examples/data/` for fully offline use.
 
