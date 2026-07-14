@@ -184,8 +184,8 @@ editors/vscode/      VS Code extension: highlighting, completions, hovers, live 
 
 ## License
 
-MIT.
+MIT, see [LICENSE](LICENSE). Use it, fork it, build your own runner on the open interchange format.
 
 ---
 
-PRIOR is built and stewarded by [AutoQuant](https://autoquant.ai), the local-first desktop platform for researching, backtesting, and deploying trading strategies.
+Built and stewarded by [AutoQuant](https://autoquant.ai).
