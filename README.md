@@ -4,7 +4,9 @@
 
 <h1 align="center">PRIOR</h1>
 
-<p align="center"><strong>Your hypothesis, written down.</strong></p>
+<p align="center"><strong>Your trading hypothesis, written down.</strong></p>
+
+<p align="center">A complete, backtestable strategy in a few readable lines that compile to Python. Lookahead bias is impossible to write.</p>
 
 <p align="center">
   <a href="https://pypi.org/project/prior-lang/"><img src="https://img.shields.io/pypi/v/prior-lang" alt="PyPI"></a>
