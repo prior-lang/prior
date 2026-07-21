@@ -9,12 +9,11 @@
 PRIOR is a tiny declarative language for expressing trading strategies as testable hypotheses. A complete strategy fits in a few lines that read like the idea in your head:
 
 ```prior
-when $NVDA at [lower_bollinger std=1]
-  buy [5% portfolio]
+when $AVGO above [sma 200] and [rsi] crosses above 35
+  buy [10% portfolio]
 
-sell when $NVDA at [middle_bollinger]
-  or [stop 1.5%]
-  or [after 5 bars]
+sell when [rsi] > 70
+  or [trailing 8%]
 ```
 
 The name is Bayesian: a prior is your belief before you see the data. A `.prior` file is exactly that — your trading thesis, committed to writing, before the backtest runs.
