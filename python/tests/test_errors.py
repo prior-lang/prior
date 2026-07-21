@@ -105,6 +105,27 @@ def test_bare_operand_tag_needs_comparison():
     assert "[rsi] < 30" in (e.suggestion or "")
 
 
+def test_leading_action_keyword_teaches_entry_form():
+    # Regression: a file whose FIRST line begins with an action keyword used
+    # to die in the lexer with "'buy' continues a previous line, but there
+    # isn't one" — the continuation heuristic firing with nothing to continue.
+    # It should instead reach the parser's form-specific error.
+    e = _err("buy when $EURUSD at [lower_bollinger]")
+    assert "buy belongs to an entry rule" in e.message
+    assert "when <condition> buy [sizing]" in (e.suggestion or "")
+    for kw in ("short", "write"):
+        e = _err(f"{kw} when $SPY at [upper_bollinger]")
+        assert f"{kw} belongs to an entry rule" in e.message
+        assert f"when <condition> {kw}" in (e.suggestion or "")
+
+
+def test_leading_connective_still_errors_clearly():
+    # A bare connective on the first line genuinely has nothing to join —
+    # the lexer's continuation error is still the right message here.
+    e = _err("and [rsi] < 30")
+    assert "continues a previous line" in e.message
+
+
 def test_short_strategy_compiles():
     s = prior_lang.compile_source(
         "universe [mega_tech]\n"

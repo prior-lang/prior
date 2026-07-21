@@ -168,17 +168,25 @@ def tokenize(source: str, comments_out: list | None = None) -> list[LogicalLine]
         if comment is not None and comments_out is not None:
             pass  # attached below once we know which logical line this is
         first = toks[0]
-        is_continuation = first.kind == "keyword" and first.value in ("and", "or", "buy", "short", "write", "where", "weighted")
-        if is_continuation:
-            if not logical:
-                raise PriorError(
-                    f"'{first.raw}' continues a previous line, but there isn't one",
-                    line=lineno, col=first.col, source_line=text,
-                )
+        # Connectives can only ever join a preceding line. Action keywords also
+        # continue a line (the `buy`/`short`/`write` under a `when`), but when one
+        # leads the very first logical line it's a real statement the parser has a
+        # form-specific error for — so we let it start a fresh line rather than
+        # masking that with a confusing "continues a previous line" lexer error.
+        connectives = ("and", "or", "where", "weighted")
+        actions = ("buy", "short", "write")
+        is_continuation = first.kind == "keyword" and first.value in connectives + actions
+        if is_continuation and logical:
             logical[-1].tokens.extend(toks)
             logical[-1].sources[lineno] = text
             if comment is not None:
                 logical[-1].trailing_comments.append(comment)
+        elif is_continuation and first.value in connectives:
+            # nothing to continue, and a bare connective can't begin anything
+            raise PriorError(
+                f"'{first.raw}' continues a previous line, but there isn't one",
+                line=lineno, col=first.col, source_line=text,
+            )
         else:
             logical.append(LogicalLine(tokens=toks, line=lineno, source=text, sources={lineno: text}))
             if comment is not None:

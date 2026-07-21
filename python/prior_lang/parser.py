@@ -1058,9 +1058,10 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
             )
 
         kw = head.value
-        if kw in ("buy",):
-            cur.err("buy belongs to an entry rule", tok=head,
-                    suggestion="when <condition> buy [sizing]")
+        if kw in ("buy", "short", "write"):
+            example = "write [csp delta=25 dte=45]" if kw == "write" else f"{kw} [sizing]"
+            cur.err(f"{kw} belongs to an entry rule", tok=head,
+                    suggestion=f"when <condition> {example}")
         if kw in seen and kw in ("strategy", "universe", "timeframe", "risk", "hold", "rebalance"):
             label = kw
             cur.err(f"more than one {label} statement — multiple rules are coming in v1.1", tok=head)
