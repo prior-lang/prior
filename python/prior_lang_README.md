@@ -9,12 +9,14 @@
 PRIOR is a tiny declarative language for expressing trading strategies as testable hypotheses. A complete strategy fits in a few lines that read like the idea in your head:
 
 ```prior
-when $AVGO above [sma 200] and [rsi] crosses above 35
+when $NVDA crosses above [supertrend] and [rsi] < 40
   buy [10% portfolio]
 
-sell when [rsi] > 70
+sell when $NVDA crosses below [supertrend]
   or [trailing 8%]
 ```
+
+Buy when the SuperTrend flips up and momentum is still washed out, trail the winner, and get out the moment the trend flips back. `[supertrend]` is a stateful ATR trailing stop, roughly thirty lines of careful, easy-to-miscode Python, that here is one word the compiler expands correctly and without lookahead.
 
 The name is Bayesian: a prior is your belief before you see the data. A `.prior` file is exactly that — your trading thesis, committed to writing, before the backtest runs.
 
@@ -24,7 +26,7 @@ PRIOR is deliberately not a programming language. No variables, no loops, no use
 
 `[lower_bollinger]` means the 20-period, 2-standard-deviation Bollinger band, *touched or crossed this bar*, with NaN warmup handled and the entry firing once on the touch rather than every bar price sits there. That is ~15 lines of careful pandas, invisible.
 
-Because the language has no way to reference a future bar, **you cannot write a lookahead bug in PRIOR**. The most common way retail backtests lie is unrepresentable.
+Because the language has no way to reference a future bar, **you cannot write a lookahead bug in PRIOR**. The most common way retail backtests lie is unrepresentable. That four-line strategy up top is roughly forty lines of correct Python once you write the SuperTrend recursion, the edge-triggered entries, and the next-bar fill by hand — and every one of those lines is a place a lookahead bug can hide. PRIOR writes them for you, from one vetted definition.
 
 ## How it runs
 

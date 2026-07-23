@@ -21,12 +21,14 @@
 PRIOR is a tiny declarative language for expressing trading strategies as testable hypotheses. A complete strategy fits in a few lines that read like the idea in your head:
 
 ```prior
-when $AVGO above [sma 200] and [rsi] crosses above 35
+when $NVDA crosses above [supertrend] and [rsi] < 40
   buy [10% portfolio]
 
-sell when [rsi] > 70
+sell when $NVDA crosses below [supertrend]
   or [trailing 8%]
 ```
+
+Buy when the SuperTrend flips up and momentum is still washed out, trail the winner, and get out the moment the trend flips back. `[supertrend]` is a stateful ATR trailing stop, roughly thirty lines of careful, easy-to-miscode Python, that here is one word the compiler expands correctly and without lookahead.
 
 The name is Bayesian: a prior is your belief before you see the data. A `.prior` file is exactly that, your trading thesis, committed to writing, before the backtest runs.
 
@@ -72,6 +74,77 @@ PRIOR is deliberately not a programming language. No variables, no loops, no use
 `[lower_bollinger]` means the 20-period, 2-standard-deviation Bollinger band, *touched or crossed this bar*, with NaN warmup handled and the entry firing once on the touch rather than every bar price sits there. That is ~15 lines of careful pandas, invisible.
 
 Because the language has no way to reference a future bar, **you cannot write a lookahead bug in PRIOR**. The most common way retail backtests lie is unrepresentable.
+
+## The same strategy, in Python
+
+Take the strategy from the top of this page:
+
+```prior
+when $NVDA crosses above [supertrend] and [rsi] < 40
+  buy [10% portfolio]
+
+sell when $NVDA crosses below [supertrend]
+  or [trailing 8%]
+```
+
+Four lines. Here is a faithful, correct Python version of the same idea, and it still leaves the trailing stop out:
+
+```python
+import numpy as np
+import pandas as pd
+
+def supertrend_direction(df, period=10, mult=3.0):
+    prev_close = df["close"].shift(1)
+    tr = pd.concat([df["high"] - df["low"],
+                    (df["high"] - prev_close).abs(),
+                    (df["low"] - prev_close).abs()], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
+    hl2 = (df["high"] + df["low"]) / 2
+    upper = (hl2 + mult * atr).to_numpy().copy()
+    lower = (hl2 - mult * atr).to_numpy().copy()
+    close = df["close"].to_numpy()
+    direction = np.ones(len(close))
+    for i in range(1, len(close)):
+        if close[i] > upper[i - 1]:
+            direction[i] = 1
+        elif close[i] < lower[i - 1]:
+            direction[i] = -1
+        else:
+            direction[i] = direction[i - 1]
+            if direction[i] > 0 and lower[i] < lower[i - 1]:
+                lower[i] = lower[i - 1]
+            if direction[i] < 0 and upper[i] > upper[i - 1]:
+                upper[i] = upper[i - 1]
+    return pd.Series(direction, index=df.index).where(atr.notna())
+
+def rsi(close, period=14):
+    delta = close.diff()
+    gain = delta.clip(lower=0).rolling(period).mean()
+    loss = (-delta.clip(upper=0)).rolling(period).mean()
+    return 100 - 100 / (1 + gain / loss.replace(0, np.nan))
+
+def generate_signals(df):
+    d = supertrend_direction(df)
+    flip_up = (d > 0) & (d.shift(1) < 0)
+    flip_down = (d < 0) & (d.shift(1) > 0)
+    entry = (flip_up & (rsi(df["close"]) < 40)).fillna(False).to_numpy()
+    exit_ = flip_down.fillna(False).to_numpy()
+    position = np.zeros(len(df))
+    holding = False
+    for i in range(len(df)):
+        if not holding and entry[i]:
+            holding = True
+        elif holding and exit_[i]:
+            holding = False
+        position[i] = 1.0 if holding else 0.0
+    # trade the next bar, so a signal built from today's close is never
+    # acted on before today's close actually exists:
+    return pd.Series(position, index=df.index).shift(1).fillna(0)
+```
+
+Every line of that is somewhere a bug can hide. The SuperTrend band has to lock against the prior bar without peeking at the next one. Entries have to fire once on the flip, not every bar the trend is up. The whole thing has to trade on the following bar, or a signal built from a bar's close gets acted on before that close exists. Miss any of these and the backtest looks better than the strategy is.
+
+PRIOR writes all of it for you, from one vetted definition, and the language has no way to express the lookahead version in the first place. Four lines, or forty. Both run the same idea; only one of them can lie to you.
 
 ## How it runs
 
