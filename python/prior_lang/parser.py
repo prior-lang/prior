@@ -480,6 +480,27 @@ def _desugar_inner(term) -> dict:
                 "condition": f"price_{cmp}_{right.name}",
                 "params": {"period": int(right.params["period"])},
             }
+        if right.name == "supertrend":
+            table = {
+                "above": "price_above_supertrend",
+                "below": "price_below_supertrend",
+                "crosses_above": "price_crosses_above_supertrend",
+                "crosses_below": "price_crosses_below_supertrend",
+            }
+            name = table.get(cmp)
+            if name is None:
+                raise PriorError(
+                    f"price compares to [supertrend] with above, below, crosses above, or crosses below, not '{_cmp_text(cmp)}'",
+                    line=term.line,
+                    suggestion="price crosses above [supertrend]",
+                )
+            return {
+                "condition": name,
+                "params": {
+                    "period": int(right.params["period"]),
+                    "multiplier": float(right.params["multiplier"]),
+                },
+            }
         raise PriorError(
             f"price cannot be compared to [{right.name}]",
             line=term.line,
@@ -613,6 +634,7 @@ def _operand_hint(tag_name: str) -> str:
         "lower_bollinger": "price at [lower_bollinger]",
         "middle_bollinger": "price at [middle_bollinger]",
         "upper_bollinger": "price at [upper_bollinger]",
+        "supertrend": "price crosses above [supertrend]",
     }
     return hints.get(tag_name, "")
 

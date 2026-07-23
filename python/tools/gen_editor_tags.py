@@ -27,6 +27,7 @@ DESCRIPTIONS: dict[str, tuple[str, str]] = {
     "vwap": ("Rolling volume-weighted average price. Needs volume — unavailable on spreads.", "when price above [vwap 20]"),
     "adx": ("Average Directional Index, 0–100 — trend strength regardless of direction. Above ~25 is trending.", "when [adx] > 25"),
     "stoch": ("Stochastic %K (smoothed), 0–100. Compare or cross a threshold for overbought/oversold timing.", "when [stoch] crosses above 20"),
+    "supertrend": ("ATR trailing-stop trend line (Wilder ATR). The band locks against the prior bar and only trails in the trend direction; price crossing it flips the trend. No lookahead or repaint.", "when price crosses above [supertrend]"),
     "ivrank": ("Implied-volatility rank over the lookback (cloud data). Parses and explains everywhere; evaluation needs hosted chain history.", "when [ivrank] > 50"),
     "short_interest": ("Short interest as % of float (cloud data). Evaluation needs hosted data.", "when [short_interest] > 20"),
     # ── predicate conditions ──────────────────────────────────────

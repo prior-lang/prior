@@ -151,6 +151,25 @@ def _condition_to_term_inner(cond: dict):
             pos.append(("number", _n(p["period"])))
         return Comparison(("price",), side, _tag("vwap", pos))
 
+    if name in ("price_above_supertrend", "price_below_supertrend",
+                "price_crosses_above_supertrend", "price_crosses_below_supertrend"):
+        if "crosses_above" in name:
+            cmp = "crosses_above"
+        elif "crosses_below" in name:
+            cmp = "crosses_below"
+        else:
+            cmp = "above" if "above" in name else "below"
+        period = _n(p.get("period", 10))
+        mult = _n(p.get("multiplier", 3.0))
+        pos = []
+        # positional order is [period, multiplier]; emit period too if the
+        # multiplier is non-default so the second slot stays unambiguous.
+        if period != 10 or mult != 3.0:
+            pos.append(("number", period))
+        if mult != 3.0:
+            pos.append(("number", mult))
+        return Comparison(("price",), cmp, _tag("supertrend", pos))
+
     if name == "bollinger_squeeze":
         pos, named = [], {}
         if _n(p.get("lookback", 126)) != 126:

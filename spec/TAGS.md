@@ -113,6 +113,7 @@ Use bare: `when [macd_cross_up]`. Compiles to `macd_crosses_above_signal` / `mac
 | `[adx] > 25` / `[adx] < 15` | operand | period (14) | `adx_greater_than` / `adx_less_than` — Wilder ADX trend-regime filter (threshold 0-100) |
 | `[stoch] < 20`, `> 80`, `crosses above/below N` | operand | period (14), smooth (3) | `stoch_*` family — slow %K vs threshold (0-100) |
 | `price above [vwap]` / `below [vwap 30]` | operand | period (20) | `price_above_vwap` / `price_below_vwap` — rolling volume-weighted typical price |
+| `price crosses above [supertrend]`, `crosses below`, `above`, `below` | operand | period (10), multiplier (3.0) | `price_{above,below,crosses_above,crosses_below}_supertrend` — ATR trailing-stop trend line (Wilder ATR). The band locks against the prior bar and only trails in the trend direction; direction at each bar reads close and prior-bar values only, so it cannot look ahead or repaint |
 | `[squeeze]` | predicate | lookback (126), pct (10), period (20), std (2.0) | `bollinger_squeeze` — band width in its lowest N% of the lookback |
 | `[obv_rising]` | predicate | period (20) | `obv_rising` — on-balance volume above its N-bar average |
 

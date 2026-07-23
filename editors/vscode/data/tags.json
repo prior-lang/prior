@@ -979,6 +979,28 @@
       ]
     },
     {
+      "name": "supertrend",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": false,
+      "description": "ATR trailing-stop trend line (Wilder ATR). The band locks against the prior bar and only trails in the trend direction; price crossing it flips the trend. No lookahead or repaint.",
+      "example": "when price crosses above [supertrend]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 10,
+          "required": false
+        },
+        {
+          "name": "multiplier",
+          "kind": "number",
+          "default": 3.0,
+          "required": false
+        }
+      ]
+    },
+    {
       "name": "target",
       "kind": "exit",
       "usage": "n/a",

@@ -118,6 +118,15 @@ def _condition_text_inner(cond: dict) -> str:
     if name in ("price_above_vwap", "price_below_vwap"):
         side = "above" if "above" in name else "below"
         return f"price is {side} the {_num(p.get('period', 20))}-bar VWAP"
+    if name in ("price_above_supertrend", "price_below_supertrend",
+                "price_crosses_above_supertrend", "price_crosses_below_supertrend"):
+        band = f"the SuperTrend line (ATR {_num(p.get('period', 10))}, {_num(p.get('multiplier', 3.0))}x)"
+        if "crosses_above" in name:
+            return f"price crosses above {band}, flipping the trend up"
+        if "crosses_below" in name:
+            return f"price crosses below {band}, flipping the trend down"
+        side = "above" if "above" in name else "below"
+        return f"price is {side} {band}"
     if name == "bollinger_squeeze":
         return (
             f"Bollinger band width is in its lowest {_num(p.get('pct', 10))}% "

@@ -25,11 +25,59 @@ from typing import Any, Dict, List
 DEFAULT_HOLD_BARS = 5
 
 
+def _supertrend_code(n: int, mult: float, final_expr: str) -> str:
+    """Emit the SuperTrend direction series and a final boolean.
+
+    SuperTrend is stateful: each bar's band locks against the prior bar's,
+    so the line only trails in the trend direction until price closes
+    through it. The direction at bar i is decided from close[i], the bands
+    at i, and prior-bar values only — never a future bar — so it cannot
+    look ahead or repaint. `final_expr` is a boolean expression over the
+    resulting `st_dir` Series (+1 uptrend / -1 downtrend / NaN during warmup)."""
+    return (
+        f"prev_close = close.shift(1)\n"
+        f"    tr = pd.concat([(df['high'] - df['low']),\n"
+        f"                    (df['high'] - prev_close).abs(),\n"
+        f"                    (df['low'] - prev_close).abs()], axis=1).max(axis=1)\n"
+        f"    atr = tr.ewm(alpha=1/{n}, adjust=False, min_periods={n}).mean()\n"
+        f"    hl2 = (df['high'] + df['low']) / 2\n"
+        f"    st_ub = (hl2 + {mult} * atr).to_numpy().copy()\n"
+        f"    st_lb = (hl2 - {mult} * atr).to_numpy().copy()\n"
+        f"    st_close = close.to_numpy()\n"
+        f"    st_dir = np.ones(len(st_close))\n"
+        f"    for st_i in range(1, len(st_close)):\n"
+        f"        if st_close[st_i] > st_ub[st_i - 1]:\n"
+        f"            st_dir[st_i] = 1.0\n"
+        f"        elif st_close[st_i] < st_lb[st_i - 1]:\n"
+        f"            st_dir[st_i] = -1.0\n"
+        f"        else:\n"
+        f"            st_dir[st_i] = st_dir[st_i - 1]\n"
+        f"            if st_dir[st_i] > 0 and st_lb[st_i] < st_lb[st_i - 1]:\n"
+        f"                st_lb[st_i] = st_lb[st_i - 1]\n"
+        f"            if st_dir[st_i] < 0 and st_ub[st_i] > st_ub[st_i - 1]:\n"
+        f"                st_ub[st_i] = st_ub[st_i - 1]\n"
+        f"    st_dir = pd.Series(st_dir, index=close.index).where(atr.notna())\n"
+        f"    cond = {final_expr}"
+    )
+
+
 def _hcode(condition: Dict[str, Any]) -> str:
     """Emit the boolean Series expression for one condition. Returns a
     Python source snippet that assigns to `cond` and is safe to inline."""
     ctype = condition["type"]
     p = condition.get("params", {}) or {}
+
+    if ctype in ("price_above_supertrend", "price_below_supertrend",
+                 "price_crosses_above_supertrend", "price_crosses_below_supertrend"):
+        n = int(p.get("period", 10))
+        mult = float(p.get("multiplier", 3.0))
+        final = {
+            "price_above_supertrend": "(st_dir > 0).fillna(False)",
+            "price_below_supertrend": "(st_dir < 0).fillna(False)",
+            "price_crosses_above_supertrend": "((st_dir > 0) & (st_dir.shift(1) < 0)).fillna(False)",
+            "price_crosses_below_supertrend": "((st_dir < 0) & (st_dir.shift(1) > 0)).fillna(False)",
+        }[ctype]
+        return _supertrend_code(n, mult, final)
 
     if ctype == "price_above_ema":
         n = int(p["period"])

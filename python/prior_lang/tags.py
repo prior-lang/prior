@@ -190,6 +190,11 @@ _register(TagSpec(
     positional=[_p("period", NUMBER, 14)],
     named={"period": _p("period", NUMBER, 14), "smooth": _p("smooth", NUMBER, 3)},
 ))
+_register(TagSpec(
+    name="supertrend", kind="condition", usage="operand",
+    positional=[_p("period", NUMBER, 10), _p("multiplier", NUMBER, 3.0)],
+    named={"period": _p("period", NUMBER, 10), "multiplier": _p("multiplier", NUMBER, 3.0)},
+))
 
 # ── Hosted-data condition tags ─────────────────────────────────────
 # These parse, validate, format, and explain everywhere. Evaluation needs
