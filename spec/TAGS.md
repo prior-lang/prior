@@ -119,6 +119,8 @@ Use bare: `when [macd_cross_up]`. Compiles to `macd_crosses_above_signal` / `mac
 
 Readbacks: *"price makes a new {period}-bar closing {high|low}"* · *"price gaps {up|down} at least {N}% at the open"* · *"the last {N} closes were each {higher|lower} than the one before"* · *"price is {above|below} {level}"* · *"ADX({period}) is {above|below} {threshold}"* · *"stochastic %K({period}) {is below|is above|crosses above|crosses below} {threshold}"*.
 
+**Using predicates vs operands.** A `predicate` tag is already a complete condition, so it stands on its own. `when [new_low]` means the strategy's instrument makes a new low. It takes no ticker and no comparison, so `price at [new_low]` is an error. An `operand` tag is a value and needs a comparison, like `price crosses above [supertrend]` or `[adx] > 25`. A predicate reads whichever instrument the strategy is scoped to, which you set with an inline `$TICKER`, a `universe` statement, or the `--data` file.
+
 ---
 
 ## Plugin tags (namespaced)

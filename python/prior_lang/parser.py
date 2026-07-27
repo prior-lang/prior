@@ -501,6 +501,13 @@ def _desugar_inner(term) -> dict:
                     "multiplier": float(right.params["multiplier"]),
                 },
             }
+        _right_spec = getattr(right, "spec", None)
+        if _right_spec is not None and _right_spec.usage == "predicate":
+            raise PriorError(
+                f"[{right.name}] is a predicate, not a value, so it is used on its own rather than compared to price",
+                line=term.line,
+                suggestion=f"when [{right.name}]",
+            )
         raise PriorError(
             f"price cannot be compared to [{right.name}]",
             line=term.line,

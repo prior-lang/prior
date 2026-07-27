@@ -40,6 +40,14 @@ def test_double_equals_hint():
     assert "at" in (e.suggestion or "")
 
 
+def test_predicate_compared_to_price_hints_bare_usage():
+    # A predicate tag ([new_low]) has no value to compare; the error should
+    # point to bare usage rather than leaving the user to brute-force it.
+    e = _err("universe [sp_top_30]\nwhen price at [new_low]\n  buy [10% portfolio]\nsell when [after 5 bars]")
+    assert "predicate" in e.message
+    assert "when [new_low]" in (e.suggestion or "")
+
+
 def test_risk_sizing_requires_stop():
     e = _err(
         "universe [sp_top_30]\nwhen [rsi] < 30\n  buy [risk 1%]\nsell when [after 5 bars]"
