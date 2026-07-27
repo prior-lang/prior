@@ -73,6 +73,18 @@ class Predicate:
 
 
 @dataclass
+class Sequence:
+    """`A then within N bars B` — A arms, B must confirm within the next N
+    bars. Binds tighter than `and`. Strictly ordered: B on the same bar as A
+    does not fire (that is what `and` is for)."""
+
+    first: object      # Comparison | Predicate
+    window: int        # bars B may land in, counted after the arming bar
+    second: object     # Comparison | Predicate
+    line: int = 0
+
+
+@dataclass
 class Program:
     name: str | None = None
     universe_tag: TagNode | None = None
@@ -405,6 +417,17 @@ def _desugar(term) -> dict:
 
 
 def _desugar_inner(term) -> dict:
+    if isinstance(term, Sequence):
+        # Nested conditions live inside params so every existing IR consumer
+        # (which forwards params verbatim) carries them without change.
+        return {
+            "condition": "sequence",
+            "params": {
+                "window": term.window,
+                "first": _desugar(term.first),
+                "second": _desugar(term.second),
+            },
+        }
     if isinstance(term, Predicate):
         tag = term.tag
         if "." in tag.name:
@@ -984,6 +1007,49 @@ def _parse_term(cur: _Cursor):
     return Comparison(left=left, cmp=cmp, right=right, line=line)
 
 
+def _parse_sequence_tail(cur: _Cursor, first, then_tok):
+    """`then within N bars <term>`, having already parsed `first` and peeked
+    at `then`. Parsed at term level so the sequence binds tighter than `and`."""
+    cur.next()  # 'then'
+    tok = cur.peek()
+    if tok is None or not (tok.kind == "keyword" and tok.value == "within"):
+        cur.err("'then' introduces a window and needs 'within N bars'",
+                tok=tok or then_tok,
+                suggestion="when [macd_cross_up] then within 5 bars [new_high]")
+    cur.next()  # 'within'
+
+    tok = cur.peek()
+    if tok is None or tok.kind != "number":
+        cur.err("'within' needs a whole number of bars", tok=tok or then_tok,
+                suggestion="then within 5 bars [new_high]")
+    window = float(tok.value)
+    if window != int(window) or int(window) < 1:
+        cur.err("the window must be a whole number of bars, at least 1", tok=tok)
+    window = int(window)
+    cur.next()
+
+    tok = cur.peek()
+    if tok is None or tok.kind != "word" or tok.value not in ("bar", "bars"):
+        cur.err("say 'bars' after the window size", tok=tok or then_tok,
+                suggestion="then within 5 bars [new_high]")
+    cur.next()
+
+    second = _parse_term(cur)
+
+    tok = cur.peek()
+    if tok is not None and tok.kind == "keyword" and tok.value == "then":
+        cur.err("chaining more than two steps is not supported yet", tok=tok,
+                suggestion="split the idea into one 'then within N bars' step")
+
+    for part, label in ((first, "before"), (second, "after")):
+        if isinstance(part, Sequence):
+            cur.err("chaining more than two steps is not supported yet", tok=then_tok)
+        if _term_timeframe(part) is not None:
+            cur.err(f"'on <timeframe>' is not supported {label} 'then' yet",
+                    tok=then_tok)
+    return Sequence(first=first, window=window, second=second, line=then_tok.line)
+
+
 def _parse_expr(cur: _Cursor, stop_at_action: bool = False, stop_words: tuple = ()):
     """Parse an and/or expression into ('all'|'any'|None, [terms])."""
     def and_chain():
@@ -999,7 +1065,11 @@ def _parse_expr(cur: _Cursor, stop_at_action: bool = False, stop_words: tuple = 
                 return ("all", items) if len(items) > 1 else (None, items)
 
     def term_node():
-        return _parse_term(cur)
+        node = _parse_term(cur)
+        tok = cur.peek()
+        if tok is not None and tok.kind == "keyword" and tok.value == "then":
+            return _parse_sequence_tail(cur, node, tok)
+        return node
 
     logic, items = and_chain()
     while True:

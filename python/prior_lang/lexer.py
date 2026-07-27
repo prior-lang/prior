@@ -19,6 +19,7 @@ KEYWORDS = {
     "hold", "rebalance", "top", "bottom", "by", "where", "weighted", "equally",
     "wheel", "write", "close", "roll",
     "and", "or", "at", "above", "below", "crosses", "price", "volume",
+    "then", "within",
 }
 RESERVED = {"on"}
 
@@ -173,7 +174,7 @@ def tokenize(source: str, comments_out: list | None = None) -> list[LogicalLine]
         # leads the very first logical line it's a real statement the parser has a
         # form-specific error for — so we let it start a fresh line rather than
         # masking that with a confusing "continues a previous line" lexer error.
-        connectives = ("and", "or", "where", "weighted")
+        connectives = ("and", "or", "where", "weighted", "then")
         actions = ("buy", "short", "write")
         is_continuation = first.kind == "keyword" and first.value in connectives + actions
         if is_continuation and logical:

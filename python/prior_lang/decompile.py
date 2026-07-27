@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from .errors import PriorError
 from .formatter import format_program
-from .parser import Comparison, Predicate, Program, TagNode
+from .parser import Comparison, Predicate, Program, Sequence, TagNode
 
 
 def _tag(name: str, pos=None, named=None, params=None) -> TagNode:
@@ -52,6 +52,13 @@ def _condition_to_term(cond: dict):
 def _condition_to_term_inner(cond: dict):
     name = cond["condition"]
     p = cond.get("params", {}) or {}
+
+    if name == "sequence":
+        return Sequence(
+            first=_condition_to_term(p["first"]),
+            window=int(p["window"]),
+            second=_condition_to_term(p["second"]),
+        )
 
     if "." in name:
         from .tags import TAGS

@@ -67,6 +67,25 @@ def _hcode(condition: Dict[str, Any]) -> str:
     ctype = condition["type"]
     p = condition.get("params", {}) or {}
 
+    if ctype == "sequence":
+        # `A then within N bars B`. The window is counted BACKWARDS from the
+        # current bar ("did A arm in the last N bars"), never forwards from the
+        # arm — so every term reads closed bars only and lookahead stays
+        # impossible. shift(1) on the arm enforces strict ordering: B on A's own
+        # bar does not fire.
+        n = int(p["window"])
+        a, b = p["first"], p["second"]
+        a_snip = _hcode({"type": a["condition"], "params": a.get("params", {})})
+        b_snip = _hcode({"type": b["condition"], "params": b.get("params", {})})
+        return (
+            f"{a_snip.replace('cond =', '_seq_a =')}\n"
+            f"    {b_snip.replace('cond =', '_seq_b =')}\n"
+            f"    _seq_arm = (_seq_a & ~_seq_a.shift(1, fill_value=False)).fillna(False)\n"
+            f"    _seq_open = _seq_arm.shift(1, fill_value=False)"
+            f".rolling({n}, min_periods=1).max().fillna(0).astype(bool)\n"
+            f"    cond = _seq_open & _seq_b.fillna(False)"
+        )
+
     if ctype in ("price_above_supertrend", "price_below_supertrend",
                  "price_crosses_above_supertrend", "price_crosses_below_supertrend"):
         n = int(p.get("period", 10))

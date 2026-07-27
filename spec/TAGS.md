@@ -121,6 +121,15 @@ Readbacks: *"price makes a new {period}-bar closing {high|low}"* · *"price gaps
 
 **Using predicates vs operands.** A `predicate` tag is already a complete condition, so it stands on its own. `when [new_low]` means the strategy's instrument makes a new low. It takes no ticker and no comparison, so `price at [new_low]` is an error. An `operand` tag is a value and needs a comparison, like `price crosses above [supertrend]` or `[adx] > 25`. A predicate reads whichever instrument the strategy is scoped to, which you set with an inline `$TICKER`, a `universe` statement, or the `--data` file.
 
+**Sequencing conditions across bars.** Conditions joined with `and` must all be true on the *same* bar. When a setup arms on one bar and confirms on a later one, use `then within N bars`:
+
+```prior
+when [new_low] then within 5 bars [macd_cross_up]
+  buy [10% portfolio]
+```
+
+The first condition arms on its rising edge, and the second must land on one of the next N bars. A confirmation on the arming bar itself does not count (use `and` for same-bar). If a fresh arm happens while a window is open it restarts the window, and a window that expires without confirming leaves nothing behind. `then` binds tighter than `and`, so `A then within 5 bars B and C` means `(A then within 5 bars B) and C`.
+
 ---
 
 ## Plugin tags (namespaced)

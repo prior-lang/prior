@@ -75,6 +75,19 @@ PRIOR is deliberately not a programming language. No variables, no loops, no use
 
 Because the language has no way to reference a future bar, **you cannot write a lookahead bug in PRIOR**. The most common way retail backtests lie is unrepresentable.
 
+## Setups that unfold over several bars
+
+Conditions joined with `and` all have to be true on the same bar. Plenty of setups aren't like that: something arms, and you watch a few later bars for a confirmation. That is what `then within N bars` is for.
+
+```prior
+when [new_low 20] then within 5 bars [macd_cross_up]
+  buy [risk 1%]
+```
+
+The flush to a new low only arms the idea. Momentum has to turn within five bars or the window closes and nothing happens. The confirmation has to land on a *later* bar (same-bar is what `and` means), a fresh arm restarts the window, and an expired window leaves no state behind.
+
+Normally this is a little state machine you maintain by hand, and it is exactly the kind of bookkeeping that quietly grows a lookahead bug. Here the window counts *backwards* from the current bar, asking whether the setup armed in the last five bars, never whether a confirmation is coming. So the guarantee above still holds: nothing reads a bar that hasn't closed.
+
 ## What PRIOR catches, and what it doesn't
 
 PRIOR makes one guarantee, and it is worth being precise about its edges. A backtest can lie to you in three different ways, and only one of them is a language problem.

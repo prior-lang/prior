@@ -1,0 +1,20 @@
+# Arm, then confirm. Price flushes to a new low — that alone is just a
+# falling knife, so it only arms the idea. The trade needs momentum to
+# turn within the next five bars; if it doesn't, the window closes and
+# nothing happens. Written as one line instead of the pending-state
+# bookkeeping this pattern usually costs, and the language still has no
+# way to peek at a bar that hasn't closed.
+
+strategy "Sweep Then Reclaim"
+
+universe [sp_top_30]
+timeframe 1d
+
+when [new_low 20] then within 5 bars [macd_cross_up]
+  buy [risk 1%]
+
+sell when [rsi] > 65
+  or [stop 2 atr]
+  or [after 20 bars]
+
+risk [max_positions 5]

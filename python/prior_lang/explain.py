@@ -41,6 +41,14 @@ def _condition_text_inner(cond: dict) -> str:
     name = cond["condition"]
     p = cond.get("params", {}) or {}
 
+    if name == "sequence":
+        n = int(p.get("window", 0))
+        first = _condition_text_inner(p["first"])
+        second = _condition_text_inner(p["second"])
+        bars = "bar" if n == 1 else "bars"
+        return (f"{first}, and then within the next {_num(n)} {bars} {second} "
+                f"(the second must land on a later bar)")
+
     if "." in name:
         from .plugins import PLUGIN_TAGS
         plug = PLUGIN_TAGS.get(name)
