@@ -75,6 +75,18 @@ PRIOR is deliberately not a programming language. No variables, no loops, no use
 
 Because the language has no way to reference a future bar, **you cannot write a lookahead bug in PRIOR**. The most common way retail backtests lie is unrepresentable.
 
+## What PRIOR catches, and what it doesn't
+
+PRIOR makes one guarantee, and it is worth being precise about its edges. A backtest can lie to you in three different ways, and only one of them is a language problem.
+
+**Your code reaching into the future.** A signal that reads a bar it should not have seen yet, an indicator computed over the whole series at once, a fill at a price that had not printed. This is the class PRIOR closes. There is no token in the grammar that can reference a future bar, so the entire category is unrepresentable. You cannot write it, correctly or otherwise. This is the guarantee.
+
+**Data that was not knowable at the time.** Companies restate earnings. A figure carries a date that looks perfectly innocent while holding a number nobody actually had on that date. PRIOR runs on the data you give it and has no way to know a value was revised after the fact. That is a data provenance problem, not a language one. The fix lives in your source. Use point-in-time data that stores what was actually reported at the time.
+
+**A universe you picked because you already know how it turned out.** Backtest on ten mega-caps that survived, with no delisted names, and PRIOR will faithfully test a biased sample and never complain. The bias is in which data you chose, not in what your strategy does with it, so no language feature can catch it. The fix is a survivorship-free dataset that includes the names that died.
+
+PRIOR owns the first one completely and does not pretend to own the other two. That is deliberate. A tool that claimed to solve all three would be making exactly the kind of quiet overstatement PRIOR exists to prevent. Close the hole you can close by construction, and be honest about the two that belong to your data.
+
 ## The same strategy, in Python
 
 Take the strategy from the top of this page:
