@@ -1,10 +1,22 @@
-# PRIOR
+<p align="center">
+  <img src="https://raw.githubusercontent.com/prior-lang/prior/main/assets/logo.png" width="140" alt="PRIOR logo">
+</p>
 
-[![PyPI](https://img.shields.io/pypi/v/prior-lang)](https://pypi.org/project/prior-lang/)
-[![Downloads](https://static.pepy.tech/badge/prior-lang)](https://pepy.tech/project/prior-lang)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+<h1 align="center">PRIOR</h1>
 
-**Your hypothesis, written down.**
+<p align="center"><strong>Your trading hypothesis, written down.</strong></p>
+
+<p align="center">A complete, backtestable strategy in a few readable lines that compile to Python. Lookahead bias is impossible to write.</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/prior-lang/"><img src="https://img.shields.io/pypi/v/prior-lang" alt="PyPI"></a>
+  <a href="https://pepy.tech/project/prior-lang"><img src="https://static.pepy.tech/badge/prior-lang" alt="Downloads"></a>
+  <a href="https://github.com/prior-lang/prior/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/prior-lang/prior/main/assets/prior-backtest.gif" width="780" alt="Write a trading strategy in a few lines, run a real backtest in one command">
+</p>
 
 PRIOR is a tiny declarative language for expressing trading strategies as testable hypotheses. A complete strategy fits in a few lines that read like the idea in your head:
 
@@ -18,7 +30,42 @@ sell when $NVDA crosses below [supertrend]
 
 Buy when the SuperTrend flips up and momentum is still washed out, trail the winner, and get out the moment the trend flips back. `[supertrend]` is a stateful ATR trailing stop, roughly thirty lines of careful, easy-to-miscode Python, that here is one word the compiler expands correctly and without lookahead.
 
-The name is Bayesian: a prior is your belief before you see the data. A `.prior` file is exactly that — your trading thesis, committed to writing, before the backtest runs.
+The name is Bayesian: a prior is your belief before you see the data. A `.prior` file is exactly that, your trading thesis, committed to writing, before the backtest runs.
+
+## Quickstart
+
+Install it. The `[backtest]` extra pulls in pandas for the backtester:
+
+```bash
+pip install 'prior-lang[backtest]'
+```
+
+Write a strategy. A whole strategy is a few lines. This one buys dips inside a confirmed uptrend and trails the winners. Save it as `dip.prior`:
+
+```
+when $AVGO above [sma 200] and [rsi] crosses above 35
+  buy [10% portfolio]
+
+sell when [rsi] > 70
+  or [trailing 8%]
+```
+
+Grab free sample data (no account, no API keys) and backtest it, all in under a minute:
+
+```bash
+prior sample stocks
+prior backtest dip.prior --data prior-samples/stocks_1d.csv.gz --trades
+```
+
+On the five years of sample data that is a 1.12 Sharpe at a 79% win rate, and the same four untuned lines stay green on 16 of the 20 sample names. The backtest always prints buy-and-hold right next to your return, so you can see exactly when simply holding would have won.
+
+See exactly what it compiles to: the plain-English readback, the interchange JSON, and the generated Python.
+
+```bash
+prior explain dip.prior
+```
+
+That is the whole loop. Point `prior backtest` at any OHLCV file (`date,open,high,low,close,volume`, CSV / Parquet / JSON) to test your own ideas, and see [The toolchain](#the-toolchain) below for every command.
 
 ## Why a language this small
 
@@ -26,7 +73,90 @@ PRIOR is deliberately not a programming language. No variables, no loops, no use
 
 `[lower_bollinger]` means the 20-period, 2-standard-deviation Bollinger band, *touched or crossed this bar*, with NaN warmup handled and the entry firing once on the touch rather than every bar price sits there. That is ~15 lines of careful pandas, invisible.
 
-Because the language has no way to reference a future bar, **you cannot write a lookahead bug in PRIOR**. The most common way retail backtests lie is unrepresentable. That four-line strategy up top is roughly forty lines of correct Python once you write the SuperTrend recursion, the edge-triggered entries, and the next-bar fill by hand — and every one of those lines is a place a lookahead bug can hide. PRIOR writes them for you, from one vetted definition.
+Because the language has no way to reference a future bar, **you cannot write a lookahead bug in PRIOR**. The most common way retail backtests lie is unrepresentable.
+
+## What PRIOR catches, and what it doesn't
+
+PRIOR makes one guarantee, and it is worth being precise about its edges. A backtest can lie to you in three different ways, and only one of them is a language problem.
+
+**Your code reaching into the future.** A signal that reads a bar it should not have seen yet, an indicator computed over the whole series at once, a fill at a price that had not printed. This is the class PRIOR closes. There is no token in the grammar that can reference a future bar, so the entire category is unrepresentable. You cannot write it, correctly or otherwise. This is the guarantee.
+
+**Data that was not knowable at the time.** Companies restate earnings. A figure carries a date that looks perfectly innocent while holding a number nobody actually had on that date. PRIOR runs on the data you give it and has no way to know a value was revised after the fact. That is a data provenance problem, not a language one. The fix lives in your source. Use point-in-time data that stores what was actually reported at the time.
+
+**A universe you picked because you already know how it turned out.** Backtest on ten mega-caps that survived, with no delisted names, and PRIOR will faithfully test a biased sample and never complain. The bias is in which data you chose, not in what your strategy does with it, so no language feature can catch it. The fix is a survivorship-free dataset that includes the names that died.
+
+PRIOR owns the first one completely and does not pretend to own the other two. That is deliberate. A tool that claimed to solve all three would be making exactly the kind of quiet overstatement PRIOR exists to prevent. Close the hole you can close by construction, and be honest about the two that belong to your data.
+
+## The same strategy, in Python
+
+Take the strategy from the top of this page:
+
+```prior
+when $NVDA crosses above [supertrend] and [rsi] < 40
+  buy [10% portfolio]
+
+sell when $NVDA crosses below [supertrend]
+  or [trailing 8%]
+```
+
+Four lines. Here is a faithful, correct Python version of the same idea, and it still leaves the trailing stop out:
+
+```python
+import numpy as np
+import pandas as pd
+
+def supertrend_direction(df, period=10, mult=3.0):
+    prev_close = df["close"].shift(1)
+    tr = pd.concat([df["high"] - df["low"],
+                    (df["high"] - prev_close).abs(),
+                    (df["low"] - prev_close).abs()], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
+    hl2 = (df["high"] + df["low"]) / 2
+    upper = (hl2 + mult * atr).to_numpy().copy()
+    lower = (hl2 - mult * atr).to_numpy().copy()
+    close = df["close"].to_numpy()
+    direction = np.ones(len(close))
+    for i in range(1, len(close)):
+        if close[i] > upper[i - 1]:
+            direction[i] = 1
+        elif close[i] < lower[i - 1]:
+            direction[i] = -1
+        else:
+            direction[i] = direction[i - 1]
+            if direction[i] > 0 and lower[i] < lower[i - 1]:
+                lower[i] = lower[i - 1]
+            if direction[i] < 0 and upper[i] > upper[i - 1]:
+                upper[i] = upper[i - 1]
+    return pd.Series(direction, index=df.index).where(atr.notna())
+
+def rsi(close, period=14):
+    delta = close.diff()
+    gain = delta.clip(lower=0).rolling(period).mean()
+    loss = (-delta.clip(upper=0)).rolling(period).mean()
+    return 100 - 100 / (1 + gain / loss.replace(0, np.nan))
+
+def generate_signals(df):
+    d = supertrend_direction(df)
+    flip_up = (d > 0) & (d.shift(1) < 0)
+    flip_down = (d < 0) & (d.shift(1) > 0)
+    entry = (flip_up & (rsi(df["close"]) < 40)).fillna(False).to_numpy()
+    exit_ = flip_down.fillna(False).to_numpy()
+    position = np.zeros(len(df))
+    holding = False
+    for i in range(len(df)):
+        if not holding and entry[i]:
+            holding = True
+        elif holding and exit_[i]:
+            holding = False
+        position[i] = 1.0 if holding else 0.0
+    # trade the next bar, so a signal built from today's close is never
+    # acted on before today's close actually exists:
+    return pd.Series(position, index=df.index).shift(1).fillna(0)
+```
+
+Every line of that is somewhere a bug can hide. The SuperTrend band has to lock against the prior bar without peeking at the next one. Entries have to fire once on the flip, not every bar the trend is up. The whole thing has to trade on the following bar, or a signal built from a bar's close gets acted on before that close exists. Miss any of these and the backtest looks better than the strategy is.
+
+PRIOR writes all of it for you, from one vetted definition, and the language has no way to express the lookahead version in the first place. Four lines, or forty. Both run the same idea; only one of them can lie to you.
 
 ## How it runs
 
@@ -35,6 +165,10 @@ strategy.prior  →  JSON strategy object  →  generated Python  →  backtest 
 ```
 
 PRIOR compiles to an open JSON interchange format, then to plain Python you can read, audit, and run. `prior explain` shows every layer, plus an English readback of what your strategy does. Nothing is magic.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/prior-lang/prior/main/assets/prior-compile.gif" width="760" alt="prior explain: English readback, interchange JSON, and the generated Python">
+</p>
 
 The reference runner is [AutoQuant](https://autoquant.ai), where PRIOR strategies scan live markets, backtest against full market history, and deploy to paper or live trading. The format is open; nothing prevents other runners.
 
@@ -61,7 +195,7 @@ prior trace strategy.prior --data bars.csv --date 2026-03-14
                                                  verdict on any bar
 ```
 
-Strategies are accepted as `.prior` text or as the interchange `.json` — every verb takes either, and `prior fmt strategy.json` converts JSON back into readable PRIOR text.
+Strategies are accepted as `.prior` text or as the interchange `.json`. Every verb takes either, and `prior fmt strategy.json` converts JSON back into readable PRIOR text.
 
 Try it immediately with real sample data (free, no account, no API keys):
 
@@ -78,7 +212,9 @@ window sizes shrink with bar size because that is what the free sources allow.
 prior backtest examples/eth_oversold_recovery.prior --data prior-samples/crypto_1d.csv.gz
 ```
 
-There is deliberately no options sample: real chain data cannot be redistributed under any free license. Options strategies — the wheel, cash-secured puts, covered calls, and multi-leg structures (put/call spreads, iron condors, straddles, strangles) — backtest locally on chains YOU bring (`prior backtest wheel.prior --data f.csv --chains chains.csv` — one row per contract per day: date, expiry, strike, right, delta, mid), or in AutoQuant where licensed chain data is built in. A bundled synthetic universe also ships in `examples/data/` for fully offline use.
+A backtest with `--trades` prints the metrics plus a full per-trade log. You see every entry and exit, bars held, return, and which exit actually fired (stop, target, or time), so no number is a black box.
+
+There is deliberately no options sample: real chain data cannot be redistributed under any free license. Options strategies (the wheel, cash-secured puts, covered calls, and multi-leg structures like put/call spreads, iron condors, straddles, strangles) backtest locally on chains YOU bring (`prior backtest wheel.prior --data f.csv --chains chains.csv`, one row per contract per day: date, expiry, strike, right, delta, mid), or in AutoQuant where licensed chain data is built in. A bundled synthetic universe also ships in `examples/data/` for fully offline use.
 
 Install: `pip install prior-lang` (add `[backtest]` for the backtester's pandas dependency).
 
@@ -105,36 +241,36 @@ via `prior sample`, and a deploy handoff to AutoQuant for live trading.
 
 ## Editor support
 
-The [VS Code extension](editors/vscode/) gives you syntax highlighting, tag completions with parameter docs, hovers that show what every tag expands to, live compiler diagnostics with quick fixes, and `prior fmt` as the document formatter.
+The [VS Code extension](https://github.com/prior-lang/prior/tree/main/editors/vscode) gives you syntax highlighting, tag completions with parameter docs, hovers that show what every tag expands to, live compiler diagnostics with quick fixes, and `prior fmt` as the document formatter.
 
-Install it from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=autoquant.prior-lang) — search "PRIOR" in the Extensions panel, or:
+Install it from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=autoquant.prior-lang). Search "PRIOR" in the Extensions panel, or:
 
 ```
 code --install-extension autoquant.prior-lang
 ```
 
-Highlighting, completions, and hovers work immediately. Diagnostics and formatting shell out to the CLI so the editor reports exactly what the compiler will say — `pip install prior-lang`, or point the `prior.command` setting at any environment that has it.
+Highlighting, completions, and hovers work immediately. Diagnostics and formatting shell out to the CLI so the editor reports exactly what the compiler will say. Install it with `pip install prior-lang`, or point the `prior.command` setting at any environment that has it.
 
 ## Documentation
 
 - **Guides and tutorials:** [autoquant.ai/prior](https://autoquant.ai/prior)
-- **Language specification:** [`spec/SPEC.md`](spec/SPEC.md) — the source of truth for implementers
-- **Tag reference:** [`spec/TAGS.md`](spec/TAGS.md) — every tag, its defaults, and exactly what it expands to
+- **Language specification:** [`spec/SPEC.md`](https://github.com/prior-lang/prior/blob/main/spec/SPEC.md): the source of truth for implementers
+- **Tag reference:** [`spec/TAGS.md`](https://github.com/prior-lang/prior/blob/main/spec/TAGS.md): every tag, its defaults, and exactly what it expands to
 
 ## Repository layout
 
 ```
 spec/SPEC.md         language specification (grammar, semantics, error contract)
 spec/TAGS.md         every tag: params, defaults, exact semantics, readback strings
-examples/*.prior     complete strategies, from one-liners to pairs trades — the executable spec
+examples/*.prior     complete strategies, from one-liners to pairs trades, the executable spec
 python/prior_lang/   the reference implementation (zero-dependency parser + CLI)
 editors/vscode/      VS Code extension: highlighting, completions, hovers, live diagnostics
 ```
 
 ## License
 
-MIT.
+MIT, see [LICENSE](https://github.com/prior-lang/prior/blob/main/LICENSE). Use it, fork it, build your own runner on the open interchange format.
 
 ---
 
-PRIOR is built and stewarded by [AutoQuant](https://autoquant.ai), the local-first desktop platform for researching, backtesting, and deploying trading strategies.
+Built and stewarded by [AutoQuant](https://autoquant.ai).

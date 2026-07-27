@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" width="140" alt="PRIOR logo">
+  <img src="https://raw.githubusercontent.com/prior-lang/prior/main/assets/logo.png" width="140" alt="PRIOR logo">
 </p>
 
 <h1 align="center">PRIOR</h1>
@@ -11,11 +11,11 @@
 <p align="center">
   <a href="https://pypi.org/project/prior-lang/"><img src="https://img.shields.io/pypi/v/prior-lang" alt="PyPI"></a>
   <a href="https://pepy.tech/project/prior-lang"><img src="https://static.pepy.tech/badge/prior-lang" alt="Downloads"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
+  <a href="https://github.com/prior-lang/prior/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
 </p>
 
 <p align="center">
-  <img src="assets/prior-backtest.gif" width="780" alt="Write a trading strategy in a few lines, run a real backtest in one command">
+  <img src="https://raw.githubusercontent.com/prior-lang/prior/main/assets/prior-backtest.gif" width="780" alt="Write a trading strategy in a few lines, run a real backtest in one command">
 </p>
 
 PRIOR is a tiny declarative language for expressing trading strategies as testable hypotheses. A complete strategy fits in a few lines that read like the idea in your head:
@@ -167,7 +167,7 @@ strategy.prior  →  JSON strategy object  →  generated Python  →  backtest 
 PRIOR compiles to an open JSON interchange format, then to plain Python you can read, audit, and run. `prior explain` shows every layer, plus an English readback of what your strategy does. Nothing is magic.
 
 <p align="center">
-  <img src="assets/prior-compile.gif" width="760" alt="prior explain: English readback, interchange JSON, and the generated Python">
+  <img src="https://raw.githubusercontent.com/prior-lang/prior/main/assets/prior-compile.gif" width="760" alt="prior explain: English readback, interchange JSON, and the generated Python">
 </p>
 
 The reference runner is [AutoQuant](https://autoquant.ai), where PRIOR strategies scan live markets, backtest against full market history, and deploy to paper or live trading. The format is open; nothing prevents other runners.
@@ -241,7 +241,7 @@ via `prior sample`, and a deploy handoff to AutoQuant for live trading.
 
 ## Editor support
 
-The [VS Code extension](editors/vscode/) gives you syntax highlighting, tag completions with parameter docs, hovers that show what every tag expands to, live compiler diagnostics with quick fixes, and `prior fmt` as the document formatter.
+The [VS Code extension](https://github.com/prior-lang/prior/tree/main/editors/vscode) gives you syntax highlighting, tag completions with parameter docs, hovers that show what every tag expands to, live compiler diagnostics with quick fixes, and `prior fmt` as the document formatter.
 
 Install it from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=autoquant.prior-lang). Search "PRIOR" in the Extensions panel, or:
 
@@ -254,8 +254,8 @@ Highlighting, completions, and hovers work immediately. Diagnostics and formatti
 ## Documentation
 
 - **Guides and tutorials:** [autoquant.ai/prior](https://autoquant.ai/prior)
-- **Language specification:** [`spec/SPEC.md`](spec/SPEC.md): the source of truth for implementers
-- **Tag reference:** [`spec/TAGS.md`](spec/TAGS.md): every tag, its defaults, and exactly what it expands to
+- **Language specification:** [`spec/SPEC.md`](https://github.com/prior-lang/prior/blob/main/spec/SPEC.md): the source of truth for implementers
+- **Tag reference:** [`spec/TAGS.md`](https://github.com/prior-lang/prior/blob/main/spec/TAGS.md): every tag, its defaults, and exactly what it expands to
 
 ## Repository layout
 
@@ -269,7 +269,7 @@ editors/vscode/      VS Code extension: highlighting, completions, hovers, live 
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Use it, fork it, build your own runner on the open interchange format.
+MIT, see [LICENSE](https://github.com/prior-lang/prior/blob/main/LICENSE). Use it, fork it, build your own runner on the open interchange format.
 
 ---
 
