@@ -22,6 +22,28 @@ VALID = (
 BROKEN = VALID.replace("[macd_cross_up]", "[lower_bolinger]")
 
 
+def test_grammar_highlights_every_language_keyword():
+    """The TextMate grammar drifts silently when the language grows a keyword —
+    nothing breaks, the word just stops being highlighted. Pin it to the lexer."""
+    import re
+
+    from prior_lang.lexer import KEYWORDS
+
+    grammar = json.loads(
+        (Path(__file__).parents[2] / "editors" / "vscode" / "syntaxes"
+         / "prior.tmLanguage.json").read_text()
+    )
+    patterns = grammar["repository"]
+    highlighted = set()
+    for key in ("keywords", "comparators", "builtins"):
+        match = patterns[key]["match"]
+        for group in re.findall(r"\(([^)]*)\)", match):
+            highlighted.update(w for w in group.split("|") if w.isalpha())
+
+    missing = sorted(k for k in KEYWORDS if k not in highlighted)
+    assert not missing, f"grammar does not highlight: {missing}"
+
+
 def test_tags_json_matches_registry():
     """Every core tag appears in the editor data with its exact params —
     regenerate with `python -m tools.gen_editor_tags` after adding tags."""

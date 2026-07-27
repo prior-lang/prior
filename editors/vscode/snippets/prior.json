@@ -13,6 +13,21 @@
     ],
     "description": "Buy the lower Bollinger band touch, exit at the middle band"
   },
+  "Sweep then confirm (windowed sequence)": {
+    "prefix": "strategy-sequence",
+    "body": [
+      "strategy \"${1:Sweep Then Reclaim}\"",
+      "",
+      "universe [${2:sp_top_30}]",
+      "",
+      "when [${3:new_low 20}] then within ${4:5} bars [${5:macd_cross_up}]",
+      "  buy [risk ${6:1}%]",
+      "",
+      "sell when [rsi] > ${7:65}",
+      "  or [stop ${8:2} atr]"
+    ],
+    "description": "Arm on one condition, confirm within the next N bars or the window closes"
+  },
   "Momentum ranking portfolio": {
     "prefix": "strategy-momentum",
     "body": [
