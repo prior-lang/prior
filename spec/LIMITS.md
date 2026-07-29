@@ -99,6 +99,8 @@ A backtest can mislead you in several ways, and only some are a language problem
 
 **Statistics computed over the whole series.** *Structurally absent.* This is the subtle one: z-scoring an indicator or bucketing it into quantiles using the full history leaks the future distribution into every early bar, and a walk-forward harness wrapped around it will not save you. PRIOR has no normalization, standardization, or quantile-binning construct. Every tag is defined on a trailing window (`[momentum 252 skip=21]`, `[volatility 20]`, `[ivrank]` against its own trailing year), so there is nowhere for a full-sample statistic to enter.
 
+**Bars in the wrong order.** *Refused.* The no-lookahead guarantee is stated in row order, so shuffled or duplicated bars would break it silently and still print a result. `prior backtest` refuses them rather than sorting quietly, since a file out of order usually means something upstream is broken and repairing it would hide the real bug. Order is checked per ticker, so stacked universe files are fine.
+
 **Data that was not knowable at the time.** *Yours.* Companies restate earnings. A figure can carry an innocent-looking date while holding a number nobody had on that date. PRIOR runs on the data you give it and cannot know a value was revised afterward. Use point-in-time data.
 
 **A universe you chose knowing how it turned out.** *Yours.* Backtest ten mega-caps that survived and PRIOR will faithfully test a biased sample without complaint. The bias is in which data you picked, not in what the strategy does with it. Use a survivorship-free dataset that includes the names that died.

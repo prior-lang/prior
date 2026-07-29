@@ -65,7 +65,53 @@ def load_bars(path: str):
             df[col] = df["close"]
     if "volume" not in df.columns:
         df["volume"] = 0
+    _check_chronological(df)
     return df
+
+
+def _check_chronological(df) -> None:
+    """Refuse bars that are out of order or duplicated.
+
+    The grammar guarantees no expression reads a bar that has not closed,
+    but that guarantee is stated in terms of row order. Hand the runner a
+    file whose rows are shuffled and `close.shift(1)` faithfully returns
+    whatever row happens to sit above — which can be a later date. The
+    lookahead then arrives through the data door instead of the grammar,
+    and the run still prints a plausible-looking result.
+
+    So this is checked rather than assumed. It is not sorted silently:
+    a file in the wrong order means something upstream is broken, and
+    quietly repairing it would hide the actual bug. Duplicated timestamps
+    are refused for the same reason.
+    """
+    pd, _ = _require_pandas()
+    if not isinstance(df.index, pd.DatetimeIndex) or len(df) < 2:
+        return
+
+    def _fail(kind: str, where: str, hint: str):
+        raise SystemExit(
+            f"bars are {kind}{where}.\n"
+            "PRIOR guarantees no strategy reads a bar that hasn't closed, and that "
+            "guarantee is\nstated in row order. Out-of-order bars break it silently "
+            f"and still produce a result.\n{hint}"
+        )
+
+    groups = df.groupby(df["ticker"]) if "ticker" in df.columns else [("", df)]
+    for name, part in groups:
+        where = f" for {name}" if name else ""
+        idx = part.index
+        if idx.has_duplicates:
+            dupe = idx[idx.duplicated()][0]
+            _fail("duplicated", f"{where} (first repeat: {dupe.date()})",
+                  "Drop or merge the repeated timestamps before backtesting.")
+        if not idx.is_monotonic_increasing:
+            bad = next(
+                (idx[i + 1] for i in range(len(idx) - 1) if idx[i + 1] < idx[i]), None
+            )
+            at = f" (first at {bad.date()})" if bad is not None else ""
+            _fail("not in chronological order", f"{where}{at}",
+                  "Sort by the date column and run again. If they arrived sorted as "
+                  "text,\ncheck the dates parsed as dates rather than strings.")
 
 
 def resolve_universe_tickers(strategy: dict) -> list[str] | None:
