@@ -14,7 +14,7 @@ These are not stylistic preferences. Violating any of them is a spec bug.
 2. **No expressible lookahead.** There is no token, tag, or construct that references a future bar. This is a property of the vocabulary, enforced by construction.
 3. **Tags are semantic macros.** A tag bundles indicator defaults, tolerance/touch semantics, NaN-warmup policy, and edge-trigger behavior. Tag semantics are defined once (in the scanner condition registry) and never forked.
 4. **Compile-time is the only error time.** A `.prior` file that compiles, runs. All validation — unknown tags, bad params, kind mismatches, missing exits — happens at compile with line-precise messages.
-5. **Round-trip stability.** parse → JSON → format must reproduce the canonical form of the input exactly. The JSON interchange (the AutoQuant strategy format, `STRATEGY_FORMAT_PLAN.md` in the AutoQuant repo) is the AST.
+5. **Round-trip stability.** parse → JSON → format must reproduce the canonical form of the input exactly. The JSON interchange (§11) is the AST.
 
 ---
 
@@ -217,3 +217,91 @@ Until these land, `[ema N] crosses below [ema M]` and SMA crosses are compile er
 ## 10. Versioning
 
 The spec carries a version (`v0.1`). A `.prior` file may optionally declare `# prior: 0.1` as its first comment line; absent, the compiler assumes its own version. Pre-1.0: breaking changes allowed with a formatter migration (`prior fmt --upgrade`) whenever mechanically possible. Post-1.0: the LEAN/Terraform bar — files keep compiling.
+
+---
+
+## 11. JSON interchange
+
+`prior compile --json` emits the strategy object; `prior fmt strategy.json` turns it back into canonical PRIOR text. Both directions run through the same parser and the same validation, so a `.json` strategy is not a back door: anything the grammar forbids is still rejected, and **§1.2 (no expressible lookahead) holds identically through the JSON path.**
+
+This makes the JSON the integration surface. A generator, a database, or a pipeline can emit strategy objects without templating PRIOR text, and they inherit the safety properties.
+
+### Round trip
+
+```
+source → compile_source() → dict → json.dumps → json.loads → strategy_to_source() → source
+```
+
+is stable: the resulting IR compares equal to the original, and the emitted source is canonical form (§8).
+
+### Strategy object
+
+Every strategy carries these four:
+
+| key | type | notes |
+|---|---|---|
+| `version` | string | interchange version, currently `"0.7"`. Not the same as the file's `# prior:` pragma. |
+| `name` | string | from the `strategy` statement |
+| `universe` | object | see below |
+| `timeframe` | string | `1d`, `1h`, `4h`, … Defaults to `1d` when the source omits it. |
+
+The rest depend on the strategy's shape. A single-entry directional strategy carries `direction`, `entry`, `exit`, `position_sizing`, `risk`. Rotation strategies carry `rebalance` and `ranking` instead of `entry`. Options strategies carry `options`. Multi-rule strategies carry `rules` and `exits`. **Consumers should treat every key beyond the four above as optional and branch on presence, not assume a fixed shape.**
+
+### `universe`
+
+Four forms, discriminated by `type`:
+
+```json
+{"type": "prebuilt", "key": "mega_tech"}
+{"type": "manual",   "tickers": ["BTC-USD"]}
+{"type": "dynamic",  "key": "top_volume", "params": {"count": 50, "period": 20}}
+{"type": "pair",     "tickers": ["GLD", "GDX"], "form": "ratio"}
+```
+
+### `entry`
+
+```json
+{"match_logic": "all", "conditions": [ <condition>, ... ]}
+```
+
+`match_logic` is `"all"` (from `and`) or `"any"` (from `or`).
+
+### Condition nodes
+
+Every condition is `{"condition": <name>, "params": {…}}`. The name is the resolved registry entry, not the surface tag: `[rsi] > 65` becomes `rsi_greater_than`, `[new_low 20]` becomes `price_new_low`. Params are fully defaulted at compile time, so a consumer never has to know a tag's defaults.
+
+Conditions nest. The windowed sequence operator (§6) carries two of them:
+
+```json
+{
+  "condition": "sequence",
+  "params": {
+    "window": 5,
+    "first":  {"condition": "price_new_low", "params": {"period": 20}},
+    "second": {"condition": "macd_crosses_above_signal",
+               "params": {"fast": 12, "slow": 26, "signal": 9}}
+  }
+}
+```
+
+### `exit`
+
+`conditions` is a list of condition nodes; the rest are scalar exits, `null` when unset. Exit precedence within a bar is fixed and documented in §6, not implied by key order here.
+
+```
+conditions, stop_loss_pct, profit_target_pct, trailing_stop_pct,
+stop_loss_atr, profit_target_atr, trailing_stop_atr,
+breakeven_trigger_pct, hold_bars
+```
+
+### `position_sizing` and `risk`
+
+```json
+{"method": "risk_based", "value": 0.01}
+```
+
+`method` is `fixed_dollar`, `percent_of_portfolio`, or `risk_based`. `risk` carries any of `max_positions`, `max_position_pct`, `daily_loss_limit_usd`, `cooldown_bars`, `contracts`.
+
+### Stability
+
+The interchange is versioned with the spec and is pre-1.0, so it moves under the same rule as the language (§10): breaking changes ship with a formatter migration where mechanically possible. **Validate by compiling.** `prior validate --stdin --json` returns `{"ok": bool, "errors": [{line, col, message, suggestion}]}`, which is the supported way for a pipeline to check a generated strategy before trusting it. There is no separate JSON Schema file; the parser is the schema.
