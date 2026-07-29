@@ -19,7 +19,7 @@ __version__ = "0.10.0"
 __all__ = [
     "PriorError", "Program", "parse_source", "compile_source",
     "format_source", "strategy_to_source", "PluginTag", "register_plugin",
-    "load_env_plugins", "__version__",
+    "load_env_plugins", "schema_path", "load_schema", "__version__",
 ]
 
 # Auto-discover plugin modules named in PRIOR_PLUGINS (comma-separated).
@@ -34,3 +34,27 @@ def compile_source(source: str, filename: str = "<string>") -> dict:
 def format_source(source: str, filename: str = "<string>") -> str:
     """Return the canonical formatting of .prior source."""
     return format_program(parse_source(source, filename))
+
+
+def schema_path():
+    """Path to the bundled JSON Schema for the strategy interchange.
+
+    For pipelines that generate strategies and want a structural check
+    before the compiler sees them. Shipped in the wheel, so this works
+    from an installed package with no repo checkout.
+    """
+    from pathlib import Path
+    return Path(__file__).with_name("strategy.schema.json")
+
+
+def load_schema() -> dict:
+    """The bundled JSON Schema, parsed.
+
+        import json, jsonschema, prior_lang
+        jsonschema.Draft202012Validator(prior_lang.load_schema()).validate(obj)
+
+    Structural only. It cannot know whether a tag exists or whether its
+    params are valid — compile_source is the authority. See SPEC.md §11.
+    """
+    import json
+    return json.loads(schema_path().read_text())

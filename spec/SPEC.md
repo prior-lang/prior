@@ -310,6 +310,15 @@ Two gates, and a pipeline that emits strategies wants both.
 
 `spec/strategy.schema.json` is a JSON Schema (draft 2020-12) covering the structure: required keys, the four universe forms, condition nesting, enumerated values, sign constraints on stops and targets. It runs without importing PRIOR, so a generator can reject a malformed object at the point it is built. It is checked against every file in `examples/` on each release.
 
+It ships in the wheel, so no repo checkout is needed:
+
+```python
+import json, jsonschema, prior_lang
+
+jsonschema.Draft202012Validator(prior_lang.load_schema()).validate(obj)
+# prior_lang.schema_path() if you want the file itself
+```
+
 It is deliberately **not** the language. It cannot tell you a tag exists, that its parameters are right, that kinds match, or that a strategy has the exits it needs. Nothing structural can. For that, `prior validate --stdin --json` returns `{"ok": bool, "errors": [{line, col, message, suggestion}]}` and is the authority.
 
 Schema first for a fast local reject, compiler second for the real answer.

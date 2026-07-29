@@ -32,3 +32,10 @@ prior = "prior_lang.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["prior_lang*"]
+
+[tool.setuptools.package-data]
+# Ship the interchange schema so integrators can validate generated
+# strategies from an installed package, without cloning the repo.
+# prior_lang.schema_path() resolves it. Kept byte-identical to
+# spec/strategy.schema.json by test_packaging.py.
+prior_lang = ["strategy.schema.json"]
