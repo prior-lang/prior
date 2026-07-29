@@ -210,6 +210,16 @@ prior trace strategy.prior --data bars.csv --date 2026-03-14
 
 Strategies are accepted as `.prior` text or as the interchange `.json`. Every verb takes either, and `prior fmt strategy.json` converts JSON back into readable PRIOR text.
 
+Generating strategies from a pipeline rather than writing them by hand? [`spec/strategy.schema.json`](https://github.com/prior-lang/prior/blob/main/spec/strategy.schema.json) is a JSON Schema for the interchange, bundled in the package so you can validate structure before the compiler sees it:
+
+```python
+import jsonschema, prior_lang
+
+jsonschema.Draft202012Validator(prior_lang.load_schema()).validate(obj)
+```
+
+It is a fast structural gate, not the language. `prior validate` remains the authority on whether a strategy is real. See [SPEC.md §11](https://github.com/prior-lang/prior/blob/main/spec/SPEC.md) for the format.
+
 Try it immediately with real sample data (free, no account, no API keys):
 
 ```
