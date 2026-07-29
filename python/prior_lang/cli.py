@@ -171,7 +171,10 @@ def _cmd_backtest(args) -> int:
                 f" {t['return_pct']:>8.2f}  {t['exit_reason']}"
             )
 
-    strategy = _load_program(args.file).to_json()
+    if args.receipt:
+        args.as_json = True  # a receipt is the JSON payload, with provenance
+    program = _load_program(args.file)
+    strategy = program.to_json()
     if strategy.get("options") and not args.chains:
         raise SystemExit(
             "options backtests need real chain data, which cannot be bundled or "
@@ -218,6 +221,19 @@ def _cmd_backtest(args) -> int:
                 {k: v for k, v in r.items() if k != "equity" and not hasattr(v, "iloc")}
                 for r in payload["per_ticker"]
             ]
+        if args.receipt:
+            from . import __version__
+            from .receipt import build_receipt
+            clean = build_receipt(
+                program=program, strategy=strategy, data_path=args.data,
+                metrics=clean, prior_version=__version__,
+                capital=args.capital, fee_bps=args.fee_bps,
+                slippage_bps=args.slippage_bps, contract_fee=args.contract_fee,
+                date_from=args.date_from, date_to=args.date_to,
+                bars=len(df),
+                first_bar=str(df.index.min().date()),
+                last_bar=str(df.index.max().date()),
+            )
         print(json.dumps(clean, indent=2, default=str))
         return 0
 
@@ -606,6 +622,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--from", dest="date_from", metavar="DATE", help="backtest from this date (indicators warm up INSIDE the range — include lead-in for long lookbacks)")
     p.add_argument("--to", dest="date_to", metavar="DATE", help="backtest up to this date")
     p.add_argument("--ticker", help="which underlying to use when the data file is multi-ticker (options strategies)")
+    p.add_argument("--receipt", action="store_true", help="print a receipt instead: digests of the strategy and the bars, the cost assumptions, and the metrics — so a published result says what produced it")
     p.set_defaults(fn=_cmd_backtest)
 
     args = parser.parse_args(argv)
