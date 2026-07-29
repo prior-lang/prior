@@ -202,21 +202,19 @@ Example: `line 4: [lower_bolinger] is not a known tag. Did you mean [lower_bolli
 
 ---
 
-## 9. Registry gaps found while drafting (feed into Phase B)
+## 9. Known gaps
 
-The vocabulary maps 1:1 onto the AutoQuant scanner condition registry (`engine/scanner/conditions.py` in the AutoQuant repo, 16 conditions in production). Writing the examples surfaced gaps to fill in Phase B — additions to the registry, used by both scanner and PRIOR:
+The tag vocabulary resolves onto a condition registry shared with AutoQuant's scanner, so a tag means the same thing in both. `TAGS.md` is the reference for what exists; this section records what deliberately does not.
 
-1. `ema_crosses_below` — registry has `ema_crosses_above` only. Needed for symmetric MA-cross exits (death cross).
-2. `sma_crosses_above` / `sma_crosses_below` — classic golden cross is SMA 50/200; registry only crosses EMAs today.
-3. Middle-band tolerance (0.5%) is hardcoded in `price_at_bollinger_band` — consider exposing as an optional param (`[middle_bollinger tol=0.5%]`) but keep the default.
+- **Band tolerance is not tunable.** `price_at_bollinger_band` hardcodes a 0.5% touch tolerance, so `[middle_bollinger tol=0.5%]` is a compile error (`has no parameter 'tol'`). Exposing it as an optional param with the current value as default would be additive and backward compatible; it has not been done.
 
-Until these land, `[ema N] crosses below [ema M]` and SMA crosses are compile errors with the message "not yet supported by the condition registry (planned)".
+A tag or parameter that the registry does not implement is always a compile error with a line-precise message, never a silent no-op. Per §1.4 that is the only place such a failure can surface.
 
 ---
 
 ## 10. Versioning
 
-The spec carries a version (`v0.1`). A `.prior` file may optionally declare `# prior: 0.1` as its first comment line; absent, the compiler assumes its own version. Pre-1.0: breaking changes allowed with a formatter migration (`prior fmt --upgrade`) whenever mechanically possible. Post-1.0: the LEAN/Terraform bar — files keep compiling.
+The spec carries a version, currently `v0.7`, which is also the `version` field on the JSON interchange (§11). A `.prior` file may optionally declare `# prior: 0.7` as its first comment line; absent, the compiler assumes its own version. Pre-1.0: breaking changes allowed with a formatter migration (`prior fmt --upgrade`) whenever mechanically possible. Post-1.0: the LEAN/Terraform bar — files keep compiling.
 
 ---
 
@@ -304,4 +302,14 @@ breakeven_trigger_pct, hold_bars
 
 ### Stability
 
-The interchange is versioned with the spec and is pre-1.0, so it moves under the same rule as the language (§10): breaking changes ship with a formatter migration where mechanically possible. **Validate by compiling.** `prior validate --stdin --json` returns `{"ok": bool, "errors": [{line, col, message, suggestion}]}`, which is the supported way for a pipeline to check a generated strategy before trusting it. There is no separate JSON Schema file; the parser is the schema.
+The interchange is versioned with the spec and is pre-1.0, so it moves under the same rule as the language (§10): breaking changes ship with a formatter migration where mechanically possible.
+
+### Validating generated strategies
+
+Two gates, and a pipeline that emits strategies wants both.
+
+`spec/strategy.schema.json` is a JSON Schema (draft 2020-12) covering the structure: required keys, the four universe forms, condition nesting, enumerated values, sign constraints on stops and targets. It runs without importing PRIOR, so a generator can reject a malformed object at the point it is built. It is checked against every file in `examples/` on each release.
+
+It is deliberately **not** the language. It cannot tell you a tag exists, that its parameters are right, that kinds match, or that a strategy has the exits it needs. Nothing structural can. For that, `prior validate --stdin --json` returns `{"ok": bool, "errors": [{line, col, message, suggestion}]}` and is the authority.
+
+Schema first for a fast local reject, compiler second for the real answer.

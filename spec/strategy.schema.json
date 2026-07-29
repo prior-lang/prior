@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/prior-lang/prior/blob/main/spec/strategy.schema.json",
+  "title": "PRIOR strategy interchange",
+  "description": "Structural schema for the JSON a PRIOR strategy compiles to (SPEC.md section 11). Intended for pipelines that GENERATE strategies, so a malformed object is caught before it reaches the compiler. This is a structural gate, NOT the language: it cannot check that a tag exists, that its parameters are valid, that kinds match, or that a strategy has the exits it needs. The parser remains the authority. Validate here first, then confirm with `prior validate --stdin --json`.",
+  "type": "object",
+  "required": ["version", "name", "universe", "timeframe"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Interchange version, tracks the spec version. Currently 0.7.",
+      "examples": ["0.7"]
+    },
+    "name": {
+      "type": ["string", "null"],
+      "description": "From the `strategy` statement. Null when the source omits it, which is legal."
+    },
+    "timeframe": {
+      "type": "string",
+      "pattern": "^[0-9]+[mhdw]$",
+      "description": "Lexical form only. The engine is the authority on which timeframes it supports; the compiler validates against that set.",
+      "examples": ["1d", "1h", "4h", "15m"]
+    },
+    "direction": {
+      "enum": ["long", "short", "mixed"],
+      "description": "Absent on strategies that have no directional entry block, such as rotation strategies."
+    },
+    "universe": { "$ref": "#/$defs/universe" },
+    "entry": { "$ref": "#/$defs/entry" },
+    "exit": { "$ref": "#/$defs/exit" },
+    "position_sizing": { "$ref": "#/$defs/positionSizing" },
+    "risk": { "$ref": "#/$defs/risk" },
+
+    "options": {
+      "type": "object",
+      "description": "Present on options strategies (wheel, write-rules). Shape is not constrained here; see TAGS.md."
+    },
+    "rules": {
+      "type": "array",
+      "description": "Present on multi-rule strategies, including files carrying both long and short entries.",
+      "items": { "type": "object" }
+    },
+    "exits": {
+      "type": "object",
+      "description": "Per-direction exit blocks on multi-rule strategies, as opposed to the single `exit` block."
+    },
+    "rebalance": {
+      "type": "string",
+      "description": "Rotation strategies only.",
+      "examples": ["daily", "weekly", "monthly"]
+    },
+    "ranking": {
+      "type": "object",
+      "description": "Rotation strategies only: the hold-top-N-by-metric block."
+    },
+    "partial_exit": {
+      "type": "object",
+      "description": "Present when the strategy sells or covers half a position."
+    }
+  },
+  "additionalProperties": true,
+
+  "$defs": {
+    "universe": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "properties": {
+            "type": { "const": "prebuilt" },
+            "key": { "type": "string" }
+          },
+          "required": ["type", "key"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "const": "manual" },
+            "tickers": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string" }
+            }
+          },
+          "required": ["type", "tickers"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "const": "dynamic" },
+            "key": { "type": "string" },
+            "params": { "type": "object" }
+          },
+          "required": ["type", "key"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "const": "pair" },
+            "tickers": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": { "type": "string" }
+            },
+            "form": { "enum": ["ratio", "diff"] }
+          },
+          "required": ["type", "tickers"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "condition": {
+      "type": "object",
+      "description": "A resolved registry condition. `condition` is the registry name, not the surface tag: `[rsi] > 65` arrives as `rsi_greater_than`. Params are fully defaulted at compile time. Nests: the sequence operator carries `first` and `second` conditions inside params.",
+      "required": ["condition"],
+      "properties": {
+        "condition": { "type": "string", "minLength": 1 },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              { "type": ["number", "string", "boolean", "null"] },
+              { "$ref": "#/$defs/condition" }
+            ]
+          }
+        },
+        "timeframe": {
+          "type": "string",
+          "pattern": "^[0-9]+[mhdw]$",
+          "description": "Present on multi-timeframe conditions, from the `on <tf>` suffix. Closed-bar, no-repaint semantics (SPEC.md section 6)."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "entry": {
+      "type": "object",
+      "required": ["match_logic", "conditions"],
+      "properties": {
+        "match_logic": {
+          "enum": ["all", "any"],
+          "description": "`all` from `and`, `any` from `or`."
+        },
+        "conditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/condition" }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "exit": {
+      "type": "object",
+      "description": "Scalar exits are null when unset. Precedence within a bar is fixed by the engine (SPEC.md section 6) and is NOT implied by key order here.",
+      "properties": {
+        "conditions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/condition" }
+        },
+        "stop_loss_pct": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "profit_target_pct": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "trailing_stop_pct": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "stop_loss_atr": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "profit_target_atr": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "trailing_stop_atr": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "breakeven_trigger_pct": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "hold_bars": { "type": ["integer", "null"], "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+
+    "positionSizing": {
+      "type": "object",
+      "required": ["method", "value"],
+      "properties": {
+        "method": { "enum": ["fixed_dollar", "percent_of_portfolio", "risk_based"] },
+        "value": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Dollars for fixed_dollar; a fraction for percent_of_portfolio and risk_based, so 1% arrives as 0.01."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "risk": {
+      "type": "object",
+      "properties": {
+        "max_positions": { "type": ["integer", "null"], "minimum": 1 },
+        "max_position_pct": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "daily_loss_limit_usd": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "cooldown_bars": { "type": ["integer", "null"], "minimum": 0 },
+        "contracts": { "type": ["integer", "null"], "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
+}
