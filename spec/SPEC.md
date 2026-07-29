@@ -234,6 +234,14 @@ is stable: the resulting IR compares equal to the original, and the emitted sour
 
 That stability is also how the door is guarded. `strategy_to_source` renders what it recognizes and ignores the rest, which is correct for a renderer and wrong for an entry point, so JSON arriving from outside goes through **`strategy_from_json`**: it renders, re-parses, re-emits, and rejects any key or parameter that did not survive the trip, naming the path it found. A parameter the grammar has no word for is therefore an error on both doors — `[rsi tol=0.5%]` is refused as text, and `{"condition": "rsi", "params": {"tol": "0.5%"}}` is refused as JSON, rather than being silently dropped. Numeric widening (`20` vs `20.0`) is not a difference.
 
+### Canonical encoding (commitments)
+
+`prior hash` prints the digest a proof system, audit log or registry commits to. The encoding is one rule applied uniformly: **every number scaled by 10^6 and rounded to an integer, keys sorted, no insignificant whitespace, UTF-8.**
+
+Counts are scaled too — an RSI period of 14 encodes as `14000000` — so a verifier never needs a table of which fields are fractions and which are counts. `10^6` reaches below a basis point, so sizing finer than the language currently expresses will not invalidate commitments already minted. The digest is taken over the compiled IR, so it is identical whether the strategy arrived as `.prior` text or as JSON, and unaffected by comments or formatting.
+
+A value the scale cannot represent exactly is an error rather than a silent rounding.
+
 ### Strategy object
 
 Every strategy carries these four:

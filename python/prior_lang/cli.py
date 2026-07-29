@@ -149,6 +149,31 @@ def _cmd_deploy(args) -> int:
     return 0
 
 
+def _cmd_hash(args) -> int:
+    """Print the canonical digest of a strategy.
+
+    The number a proof system, audit log or registry commits to. Identical
+    for the same strategy whether it is stored as .prior text or as JSON,
+    and unchanged by comments or formatting.
+    """
+    from .canonical import SCALE, canonical_bytes, strategy_digest
+
+    strategy = _load_program(args.file).to_json()
+    digest = strategy_digest(strategy)
+    if args.bytes:
+        sys.stdout.write(canonical_bytes(strategy).decode("utf-8") + "\n")
+        return 0
+    if args.as_json:
+        print(json.dumps({
+            "digest": f"sha256:{digest}",
+            "algorithm": "sha256",
+            "encoding": f"prior-canonical/1 scale=10^{len(str(SCALE)) - 1}",
+        }, indent=2))
+        return 0
+    print(f"sha256:{digest}")
+    return 0
+
+
 def _cmd_backtest(args) -> int:
     if not args.data:
         raise SystemExit(
@@ -607,6 +632,12 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("deploy", help="run a strategy live (paper or real) — shows your path, executes nothing")
     p.add_argument("file")
     p.set_defaults(fn=_cmd_deploy)
+
+    p = sub.add_parser("hash", help="print the canonical digest of a strategy — the number to commit to")
+    p.add_argument("file")
+    p.add_argument("--json", dest="as_json", action="store_true", help="print the digest with its algorithm and encoding version")
+    p.add_argument("--bytes", action="store_true", help="print the canonical bytes themselves instead of the digest, for checking another implementation")
+    p.set_defaults(fn=_cmd_hash)
 
     p = sub.add_parser("backtest", help="run the strategy over a bars file and print metrics")
     p.add_argument("file")

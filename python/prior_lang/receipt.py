@@ -9,15 +9,12 @@ honest".
 A receipt binds them together: a digest of the strategy, a digest of the
 data, the cost assumptions, the window, and the metrics.
 
-The strategy digest is taken over the **canonical source with comments
-stripped** (SPEC §8), not over the interchange JSON. Two reasons. Canonical
-text carries no floats — `[stop 3%]` stays the characters `3%` rather than
-becoming 0.03, which has no exact binary representation — so the digest
-reproduces across implementations. And it is door-independent: the same
-strategy hashes identically whether it arrived as `.prior` text or as JSON,
-because both render to the same canonical form. Comments are documentation
-rather than semantics, so they are excluded; two strategies that differ
-only in commentary are the same strategy.
+The strategy digest is the canonical digest from `canonical.py`: the
+compiled IR with every number scaled to an integer, keys sorted, no
+insignificant whitespace. That makes it identical whether the strategy
+arrived as `.prior` text or as JSON, and independent of comments and
+formatting, which are not part of what runs. One digest, used here and by
+anything else committing to a strategy.
 
 This is a claim about provenance, not about honesty. A receipt says these
 metrics came from this strategy on this data at these costs. It cannot say
@@ -42,15 +39,14 @@ def file_digest(path: str) -> str:
 
 
 def strategy_digest(program) -> str:
-    """SHA-256 of the canonical source, comments stripped.
+    """SHA-256 of the canonical encoding of a parsed Program.
 
-    Takes a parsed Program so the caller cannot accidentally hash
-    non-canonical text.
+    Delegates to canonical.py so a receipt and a commitment never disagree
+    about which digest identifies a strategy.
     """
-    from .formatter import format_program
+    from .canonical import strategy_digest as _digest
 
-    canonical = format_program(program, include_comments=False)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return _digest(program.to_json())
 
 
 def build_receipt(
