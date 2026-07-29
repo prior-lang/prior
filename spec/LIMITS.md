@@ -103,7 +103,9 @@ A backtest can mislead you in several ways, and only some are a language problem
 
 **A universe you chose knowing how it turned out.** *Yours.* Backtest ten mega-caps that survived and PRIOR will faithfully test a biased sample without complaint. The bias is in which data you picked, not in what the strategy does with it. Use a survivorship-free dataset that includes the names that died.
 
-PRIOR owns the first two and does not pretend to own the last two. A tool claiming all four would be making exactly the kind of quiet overstatement this language exists to prevent.
+**A result you selected from many attempts.** *Yours.* Write a thousand strategies, backtest them all honestly, publish the best one, and you have produced a lie that contains no lookahead anywhere in it. Selection bias lives above the language, in which results you chose to believe, and no property of a single backtest can detect how many siblings it had. The mitigations are procedural: count your trials, deflate your Sharpe for them, and hold out data your search never touched.
+
+PRIOR owns the first two and does not pretend to own the last three. A tool claiming all five would be making exactly the kind of quiet overstatement this language exists to prevent.
 
 ## 6. Asking for something that is not here
 
