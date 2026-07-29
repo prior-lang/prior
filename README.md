@@ -282,6 +282,7 @@ Highlighting, completions, and hovers work immediately. Diagnostics and formatti
 - **Language specification:** [`spec/SPEC.md`](https://github.com/prior-lang/prior/blob/main/spec/SPEC.md): the source of truth for implementers
 - **Tag reference:** [`spec/TAGS.md`](https://github.com/prior-lang/prior/blob/main/spec/TAGS.md): every tag, its defaults, and exactly what it expands to
 - **Limits:** [`spec/LIMITS.md`](https://github.com/prior-lang/prior/blob/main/spec/LIMITS.md): what the language cannot express, and which backtest biases it does not close
+- **Writing your own tags:** [`spec/PLUGINS.md`](https://github.com/prior-lang/prior/blob/main/spec/PLUGINS.md): add namespaced condition tags without touching the grammar
 
 ## Repository layout
 

@@ -135,7 +135,7 @@ The first condition arms on its rising edge, and the second must land on one of 
 
 ## Plugin tags (namespaced)
 
-Developers extend the vocabulary without touching the grammar: `prior_lang.plugins.register(PluginTag(...))` (or modules named in `PRIOR_PLUGINS`) adds namespaced predicate tags like `[acme.momo 10]` with their own pandas emitters and explain readbacks. Plugin tags compose with everything — `and`/`or`, `on <tf>`, `where` filters — because they are ordinary condition tags to the compiler. Un-dotted names stay reserved for the core vocabulary; plugin conditions compile only in runtimes where the plugin is registered.
+Full guide with a worked example: [`PLUGINS.md`](PLUGINS.md). In short, developers extend the vocabulary without touching the grammar: `prior_lang.plugins.register(PluginTag(...))` (or modules named in `PRIOR_PLUGINS`) adds namespaced predicate tags like `[acme.momo 10]` with their own pandas emitters and explain readbacks. Plugin tags compose with everything — `and`/`or`, `on <tf>`, `where` filters — because they are ordinary condition tags to the compiler. Un-dotted names stay reserved for the core vocabulary; plugin conditions compile only in runtimes where the plugin is registered.
 
 ---
 

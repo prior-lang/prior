@@ -5,7 +5,7 @@ PRIOR is deliberately small. This document is the honest inventory of what that 
 Two rules make the rest of this page predictable:
 
 - **Nothing fails silently.** Every limit below is a compile error with a line, a caret, and a message. A `.prior` file that compiles, runs. A tool that quietly ignores what it does not understand is how you end up backtesting a strategy you did not write.
-- **The tag vocabulary is the ceiling.** [`TAGS.md`](TAGS.md) is the complete list of tags. If a concept is not in there, you cannot express it, and the answer is a new tag rather than new syntax.
+- **The tag vocabulary is the ceiling.** [`TAGS.md`](TAGS.md) is the complete list of core tags. If a concept is not in there, you cannot express it, and the answer is a new tag rather than new syntax. You can add your own without touching the grammar — see [`PLUGINS.md`](PLUGINS.md).
 
 ---
 
