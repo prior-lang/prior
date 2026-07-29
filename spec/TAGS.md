@@ -1,4 +1,4 @@
-# PRIOR Tag Reference — v0.7 (draft)
+# PRIOR Tag Reference — v0.7 (draft) 
 
 Every tag in the language, its parameters, defaults, exact semantics, and what it compiles to. This file is the source of truth for the compiler's tag registry, the editor's autocomplete, and the `prior explain` readback strings.
 
