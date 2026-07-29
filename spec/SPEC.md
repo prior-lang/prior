@@ -232,6 +232,8 @@ source → compile_source() → dict → json.dumps → json.loads → strategy_
 
 is stable: the resulting IR compares equal to the original, and the emitted source is canonical form (§8).
 
+That stability is also how the door is guarded. `strategy_to_source` renders what it recognizes and ignores the rest, which is correct for a renderer and wrong for an entry point, so JSON arriving from outside goes through **`strategy_from_json`**: it renders, re-parses, re-emits, and rejects any key or parameter that did not survive the trip, naming the path it found. A parameter the grammar has no word for is therefore an error on both doors — `[rsi tol=0.5%]` is refused as text, and `{"condition": "rsi", "params": {"tol": "0.5%"}}` is refused as JSON, rather than being silently dropped. Numeric widening (`20` vs `20.0`) is not a difference.
+
 ### Strategy object
 
 Every strategy carries these four:

@@ -18,7 +18,7 @@ from pathlib import Path
 
 from . import __version__, parse_source
 from .codegen import compile_strategy
-from .decompile import strategy_to_source
+from .decompile import strategy_from_json
 from .errors import PriorError
 from .explain import explain_strategy
 from .formatter import format_program
@@ -41,7 +41,7 @@ def _load_program(path: str):
     src = _read(path)
     if path.endswith(".json"):
         try:
-            src = strategy_to_source(json.loads(src))
+            src = strategy_from_json(json.loads(src))
         except json.JSONDecodeError as e:
             raise SystemExit(f"{path}: not valid JSON ({e})")
     return parse_source(src, filename=path)
@@ -54,7 +54,7 @@ def _cmd_validate(args) -> int:
         if args.stdin:
             src = sys.stdin.read()
             if (args.file or "").endswith(".json"):
-                src = strategy_to_source(json.loads(src))
+                src = strategy_from_json(json.loads(src))
             parse_source(src, filename=args.file or "<stdin>")
         else:
             if not args.file:
@@ -80,7 +80,7 @@ def _cmd_fmt(args) -> int:
     if args.stdin:
         src = sys.stdin.read()
         if (args.file or "").endswith(".json"):
-            src = strategy_to_source(json.loads(src))
+            src = strategy_from_json(json.loads(src))
         sys.stdout.write(format_program(parse_source(src, filename=args.file or "<stdin>"),
                                         include_comments=not args.strip_comments))
         return 0

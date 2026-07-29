@@ -9,6 +9,8 @@ defaults, so the text stays as short as what a person would write.
 
 from __future__ import annotations
 
+import json
+
 from .errors import PriorError
 from .formatter import format_program
 from .parser import Comparison, Predicate, Program, Sequence, TagNode
@@ -251,8 +253,78 @@ def _metric_tag(m: dict) -> TagNode:
     return TagNode(name, dict(p), pos_raw=pos, named_raw=named)
 
 
+def _numeric(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _unrepresentable(original, roundtripped, path: str = "") -> list[str]:
+    """Paths in `original` that did not survive JSON → source → JSON.
+
+    Anything listed here was silently discarded by the decompiler, which
+    means the language has no way to say it. Reporting the path is what
+    keeps §1.4 true on the JSON door: bad input is a compile error, not a
+    quiet no-op.
+    """
+    here = path or "<root>"
+    if isinstance(original, dict):
+        if not isinstance(roundtripped, dict):
+            return [here]
+        out = []
+        for k, v in original.items():
+            sub = f"{path}.{k}" if path else k
+            if k not in roundtripped:
+                out.append(sub)
+            else:
+                out.extend(_unrepresentable(v, roundtripped[k], sub))
+        return out
+    if isinstance(original, list):
+        if not isinstance(roundtripped, list) or len(roundtripped) != len(original):
+            return [here]
+        out = []
+        for i, v in enumerate(original):
+            out.extend(_unrepresentable(v, roundtripped[i], f"{path}[{i}]"))
+        return out
+    if _numeric(original) and _numeric(roundtripped):
+        return [] if float(original) == float(roundtripped) else [here]
+    return [] if original == roundtripped else [here]
+
+
+def strategy_from_json(strategy: dict) -> str:
+    """Render strategy JSON as canonical .prior text, rejecting anything
+    the language cannot express.
+
+    `strategy_to_source` renders what it recognizes and ignores the rest,
+    which is the right behavior for a renderer and the wrong behavior for
+    a door into the language. This wraps it with the round-trip check the
+    spec already promises (§1.5): parse the rendered text back, re-emit
+    the JSON, and refuse any key or parameter that vanished on the way.
+
+    So a strategy arriving as JSON is held to the same standard as one
+    written as text — `[rsi tol=0.5%]` is an error either way.
+    """
+    from .parser import parse_source
+
+    src = strategy_to_source(strategy)
+    reemitted = parse_source(src, filename="<json>").to_json()
+    lost = _unrepresentable(
+        json.loads(json.dumps(strategy)), json.loads(json.dumps(reemitted))
+    )
+    if lost:
+        shown = ", ".join(lost[:3]) + (f" (+{len(lost) - 3} more)" if len(lost) > 3 else "")
+        raise PriorError(
+            f"this JSON contains {shown}, which PRIOR cannot express",
+            suggestion="a strategy stored as JSON is held to the same rules as "
+            ".prior text; check TAGS.md for the tag's real parameters",
+        )
+    return src
+
+
 def strategy_to_source(strategy: dict) -> str:
-    """Render strategy JSON as canonical .prior text."""
+    """Render strategy JSON as canonical .prior text.
+
+    Renders what it recognizes. Use `strategy_from_json` when the JSON
+    comes from outside and unrecognized content should be an error.
+    """
     uni_check = strategy.get("universe", {}) or {}
     if uni_check.get("type") == "pair":
         global _PAIR_LEFT

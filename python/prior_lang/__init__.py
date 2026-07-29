@@ -9,16 +9,17 @@ Public API: parse_source (→ Program), compile_source (→ JSON dict),
 format_source (→ canonical text), PriorError.
 """
 
-from .decompile import strategy_to_source
+from .decompile import strategy_from_json, strategy_to_source
 from .plugins import PluginTag, load_env_plugins, register as register_plugin
 from .errors import PriorError
 from .formatter import format_program
 from .parser import Program, parse_source
 
-__version__ = "0.10.1"
+__version__ = "0.10.2"
 __all__ = [
     "PriorError", "Program", "parse_source", "compile_source",
-    "format_source", "strategy_to_source", "PluginTag", "register_plugin",
+    "format_source", "strategy_to_source", "strategy_from_json",
+    "PluginTag", "register_plugin",
     "load_env_plugins", "schema_path", "load_schema", "__version__",
 ]
 
