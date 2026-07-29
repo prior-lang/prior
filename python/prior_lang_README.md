@@ -98,7 +98,9 @@ PRIOR makes one guarantee, and it is worth being precise about its edges. A back
 
 **A universe you picked because you already know how it turned out.** Backtest on ten mega-caps that survived, with no delisted names, and PRIOR will faithfully test a biased sample and never complain. The bias is in which data you chose, not in what your strategy does with it, so no language feature can catch it. The fix is a survivorship-free dataset that includes the names that died.
 
-PRIOR owns the first one completely and does not pretend to own the other two. That is deliberate. A tool that claimed to solve all three would be making exactly the kind of quiet overstatement PRIOR exists to prevent. Close the hole you can close by construction, and be honest about the two that belong to your data.
+PRIOR owns the first one completely and does not pretend to own the other two. That is deliberate. A tool that claimed to solve all three would be making exactly the kind of quiet overstatement PRIOR exists to prevent.
+
+Before you invest an evening, it is worth knowing what the language *cannot* say: no arithmetic between tags, nothing learned or fitted, one strategy form per file, options single-ticker, sequences two steps. The full inventory, with the exact error you get for each, is in [`spec/LIMITS.md`](https://github.com/prior-lang/prior/blob/main/spec/LIMITS.md). The complete tag vocabulary is in [`spec/TAGS.md`](https://github.com/prior-lang/prior/blob/main/spec/TAGS.md) — if a concept is not in there, you cannot express it. Close the hole you can close by construction, and be honest about the two that belong to your data.
 
 ## The same strategy, in Python
 
@@ -279,6 +281,7 @@ Highlighting, completions, and hovers work immediately. Diagnostics and formatti
 - **Guides and tutorials:** [autoquant.ai/prior](https://autoquant.ai/prior)
 - **Language specification:** [`spec/SPEC.md`](https://github.com/prior-lang/prior/blob/main/spec/SPEC.md): the source of truth for implementers
 - **Tag reference:** [`spec/TAGS.md`](https://github.com/prior-lang/prior/blob/main/spec/TAGS.md): every tag, its defaults, and exactly what it expands to
+- **Limits:** [`spec/LIMITS.md`](https://github.com/prior-lang/prior/blob/main/spec/LIMITS.md): what the language cannot express, and which backtest biases it does not close
 
 ## Repository layout
 

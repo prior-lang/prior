@@ -60,8 +60,9 @@ The right-hand side must be a number 0–100. Readback: *"RSI({period}) {is belo
 | `price above [ema 20]` | `price_above_ema` |
 | `price below [ema 20]` | `price_below_ema` |
 | `[ema 50] crosses above [ema 200]` | `ema_crosses_above {fast: 50, slow: 200}` |
-| `[ema 50] crosses below [ema 200]` | **registry gap** — compile error "planned" (SPEC §9) |
-| `[sma N] crosses above/below [sma M]` | **registry gap** — compile error "planned" (SPEC §9) |
+| `[ema 50] crosses below [ema 200]` | `ema_crosses_below {fast: 50, slow: 200}` |
+| `[sma 50] crosses above [sma 200]` | `sma_crosses_above {fast: 50, slow: 200}` |
+| `[sma 50] crosses below [sma 200]` | `sma_crosses_below {fast: 50, slow: 200}` |
 
 In an MA-cross comparison, the left tag is `fast` and the right is `slow`; `fast >= slow` is a compile error (*"the faster average goes on the left: [ema 50] crosses above [ema 200]"*).
 
