@@ -111,6 +111,14 @@ A backtest can mislead you in several ways, and only some are a language problem
 
 PRIOR closes the first two by construction and gives you a receipt for the third. The last two belong to your data and your process, and it does not pretend otherwise. A tool claiming all of them would be making exactly the kind of quiet overstatement this language exists to prevent.
 
+William Scally, who ran the same strategy and the same dataset through both his own walk-forward pipeline and PRIOR, stated the division more cleanly than this document had managed:
+
+> PRIOR guarantees structural integrity. The language solves lookahead bias by preventing you from accidentally pulling tomorrow's open price into today's logic, which is what guarantees the backtest could have been executed in real time.
+>
+> Walk-forward optimization guarantees statistical integrity. Even a perfectly realistic strategy with no lookahead anywhere in it can be curve-fit to past market regimes, and walk-forward is what shows whether the edge survives into data the search never touched.
+
+The two are orthogonal and you want both. A language cannot tell you whether your parameters were fitted to a regime that has since ended, and no amount of walk-forward machinery repairs a rule that quietly read tomorrow's price. PRIOR is not a substitute for a validation harness and is not trying to be.
+
 ## 6. Asking for something that is not here
 
 If the rule you want is not expressible, that is worth reporting. The most useful report names the actual setup rather than the syntax you tried, because the answer is often a tag that does not exist yet rather than a grammar change.
