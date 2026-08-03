@@ -73,6 +73,7 @@ DESCRIPTIONS: dict[str, tuple[str, str]] = {
     "covered_call": ("Covered call against held shares at ~`delta`, ~`dte` days out.", "write [covered_call delta=25 dte=45]"),
     "put_spread": ("Credit put spread: sell the ~`delta` put, buy a put `width` strike points lower. Defined risk (width minus credit).", "write [put_spread delta=25 width=5 dte=30]"),
     "call_spread": ("Credit call spread: sell the ~`delta` call, buy a call `width` points higher. Defined risk.", "write [call_spread delta=25 width=5 dte=30]"),
+    "jade_lizard": ("Sell the ~`delta` put and call, buy a call `width` points higher. No upside risk when the credit covers the width; naked-put downside.", "write [jade_lizard delta=25 width=5 dte=45]"),
     "iron_condor": ("Sell the ~`delta` put and call, buy wings `width` points further out. Defined risk both sides.", "write [iron_condor delta=20 width=5 dte=45]"),
     "straddle": ("Sell the at-the-money put and call. Undefined risk until closed.", "write [straddle dte=30]"),
     "strangle": ("Sell the ~`delta` put and call. Undefined risk until closed.", "write [strangle delta=20 dte=45]"),

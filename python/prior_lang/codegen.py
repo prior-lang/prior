@@ -1306,7 +1306,8 @@ def generate_mixed_code(
 
 
 
-OPTION_STRUCTURES = ("put_spread", "call_spread", "iron_condor", "straddle", "strangle")
+OPTION_STRUCTURES = ("put_spread", "call_spread", "iron_condor", "jade_lizard",
+                     "straddle", "strangle")
 
 
 def _structure_build_snippet(otype: str, delta: float, width: float, dte: int) -> str:
@@ -1341,6 +1342,23 @@ def _structure_build_snippet(otype: str, delta: float, width: float, dte: int) -
         return None
     return [dict(p_short, side="short"), dict(p_wing, side="long"),
             dict(c_short, side="short"), dict(c_wing, side="long")]'''
+    if otype == "jade_lizard":
+        # Short put, short call, long call `width` above the short call.
+        # An iron condor without the put wing: the naked put is what
+        # leaves the downside undefined, and the call spread is what
+        # removes the upside risk when its credit covers its width.
+        return f'''    p_short = _prior_pick(ch_d, "P", {delta}, {dte}, d)
+    if p_short is None:
+        return None
+    exp = p_short["expiry"]
+    c_short = _prior_pick_at(ch_d, exp, "C", {delta})
+    if c_short is None or c_short["strike"] <= p_short["strike"]:
+        return None
+    c_wing = _prior_wing(ch_d, exp, "C", c_short["strike"] + {width}, "above")
+    if c_wing is None or c_wing["strike"] <= c_short["strike"]:
+        return None
+    return [dict(p_short, side="short"), dict(c_short, side="short"),
+            dict(c_wing, side="long")]'''
     if otype == "straddle":
         return f'''    anchor = _prior_pick(ch_d, "P", 50, {dte}, d)
     if anchor is None:

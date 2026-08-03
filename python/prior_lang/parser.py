@@ -166,7 +166,7 @@ class Program:
                 if oname != "straddle":
                     default_delta = 20 if oname in ("iron_condor", "strangle") else 25
                     option["delta"] = float(p.get("delta", default_delta))
-                if oname in ("put_spread", "call_spread", "iron_condor"):
+                if oname in ("put_spread", "call_spread", "iron_condor", "jade_lizard"):
                     option["width"] = float(p.get("width", 5))
                 option["dte"] = int(p.get("dte", 45))
             out = {
@@ -1225,8 +1225,8 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
                 if otag.spec is None or otag.spec.kind != "option":
                     cur.err(f"write takes an option tag, not [{otag.name}]", tok=buy,
                             suggestion="write [csp delta=25 dte=45], [put_spread delta=25 width=5 dte=30], "
-                                       "[iron_condor ...], [straddle ...], [strangle ...]")
-                if otag.name in ("put_spread", "call_spread", "iron_condor"):
+                                       "[iron_condor ...], [jade_lizard ...], [straddle ...], [strangle ...]")
+                if otag.name in ("put_spread", "call_spread", "iron_condor", "jade_lizard"):
                     if float(otag.params.get("width", 5)) <= 0:
                         cur.err("width is the wing distance in strike points — it must be positive", tok=buy)
                 prog.opt_form = "rules"

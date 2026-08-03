@@ -377,7 +377,7 @@ def _strategy_to_source_body(strategy: dict) -> str:
                 params["delta"] = _n(opt.get("delta", d_delta))
                 if params["delta"] != d_delta:
                     named["delta"] = ("number", params["delta"])
-            if otype in ("put_spread", "call_spread", "iron_condor"):
+            if otype in ("put_spread", "call_spread", "iron_condor", "jade_lizard"):
                 params["width"] = _n(opt.get("width", 5))
                 if params["width"] != 5:
                     named["width"] = ("number", params["width"])

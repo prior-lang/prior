@@ -1,0 +1,20 @@
+# The structure with a hole in its risk profile. Sell the ~25-delta put,
+# sell the ~25-delta call, buy a call five points above the short one.
+# If the total credit collected exceeds the width of that call spread,
+# there is no upside risk at all: the spread's worst case is already
+# paid for. The downside is a naked short put and stays undefined, which
+# is why the management lines are not decoration.
+#
+# Sold into rich premium, because the whole trade is a bet that implied
+# volatility is dearer than what follows.
+strategy "Jade Lizard on SPY"
+
+universe $SPY
+
+when [ivrank] > 40
+  write [jade_lizard delta=25 width=5 dte=45]
+
+close at [profit 50%]
+  or [dte 21]
+
+risk [contracts 1]

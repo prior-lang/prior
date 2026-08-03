@@ -442,6 +442,37 @@
       ]
     },
     {
+      "name": "jade_lizard",
+      "kind": "option",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Sell the ~`delta` put and call, buy a call `width` points higher. No upside risk when the credit covers the width; naked-put downside.",
+      "example": "write [jade_lizard delta=25 width=5 dte=45]",
+      "params": [
+        {
+          "name": "delta",
+          "kind": "number",
+          "default": 25,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "width",
+          "kind": "number",
+          "default": 5,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "dte",
+          "kind": "number",
+          "default": 45,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
       "name": "loss",
       "kind": "management",
       "usage": "n/a",

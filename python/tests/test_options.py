@@ -168,3 +168,68 @@ def test_cli_backtest_guard(tmp_path, capsys):
     with pytest.raises(SystemExit) as e:
         main(["backtest", str(f), "--data", str(data)])
     assert "chain data" in str(e.value)
+
+
+# ── jade lizard ──────────────────────────────────────────────────
+
+JADE = '''strategy "Jade"
+
+universe $SPY
+
+when [ivrank] > 40
+  write [jade_lizard delta=25 width=5 dte=45]
+
+close at [profit 50%]
+  or [dte 21]
+
+risk [contracts 1]
+'''
+
+
+def test_jade_lizard_compiles_and_round_trips():
+    from prior_lang import compile_source, strategy_to_source
+    st = compile_source(JADE)
+    assert compile_source(strategy_to_source(st)) == st
+
+
+def test_jade_lizard_builds_three_legs_not_four():
+    """An iron condor without the put wing. The missing wing is the whole
+    point: it is what leaves the downside naked and the credit larger."""
+    from prior_lang.codegen import _structure_build_snippet
+    body = _structure_build_snippet("jade_lizard", 25, 5, 45)
+    assert body.count('side="short"') == 2      # short put, short call
+    assert body.count('side="long"') == 1       # the call wing only
+    assert '"P", 25' in body and '"C", 25' in body
+
+
+def test_jade_lizard_is_undefined_risk():
+    """Collateral is unbounded below because the put is naked, so it must
+    report like a strangle rather than like a condor. Falling through to
+    a finite requirement would produce percent returns off a base that
+    does not exist."""
+    from prior_lang.options_backtest import _requirement
+    legs = [
+        {"side": "short", "right": "P", "strike": 400.0},
+        {"side": "short", "right": "C", "strike": 460.0},
+        {"side": "long", "right": "C", "strike": 465.0},
+    ]
+    assert _requirement(legs, entry_px=430.0, mult=100) is None
+
+
+def test_jade_lizard_width_must_be_positive():
+    from prior_lang import compile_source
+    from prior_lang.errors import PriorError
+    import pytest as _pytest
+    with _pytest.raises(PriorError):
+        compile_source(JADE.replace("width=5", "width=0"))
+
+
+def test_jade_lizard_explains_its_asymmetry():
+    """The reason to use this structure is that the upside risk vanishes
+    once the credit covers the width. If explain does not say that, the
+    readback is not describing the trade."""
+    from prior_lang import compile_source
+    from prior_lang.explain import explain_strategy
+    text = explain_strategy(compile_source(JADE)).lower()
+    assert "upside" in text
+    assert "naked put" in text or "undefined" in text

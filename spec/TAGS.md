@@ -204,6 +204,7 @@ Evaluation is bar-close (SPEC §6); precedence within a bar: stop → breakeven 
 | `[put_spread delta=25 width=5 dte=30]` | option | delta (25), width (5, strike points), dte (45) | credit put spread: sell the delta put, buy the wing `width` points lower; defined risk |
 | `[call_spread delta=25 width=5 dte=30]` | option | same | credit call spread: wing `width` points higher |
 | `[iron_condor delta=20 width=5 dte=45]` | option | delta (20), width (5), dte (45) | short put + call at delta, wings `width` points further out; one expiry |
+| `[jade_lizard delta=25 width=5 dte=45]` | option | delta (25), width (5), dte (45) | short put + short call + long call `width` points above it; no upside risk once the credit exceeds the width, naked-put downside |
 | `[straddle dte=30]` | option | dte (45) | short the at-the-money put and call; undefined risk |
 | `[strangle delta=20 dte=45]` | option | delta (20), dte (45) | short the delta put and call; undefined risk |
 | `[profit 50%]` | management | percent of credit | close when half the credit is captured |

@@ -281,6 +281,11 @@ _register(TagSpec(
            "dte": _p("dte", NUMBER, 45)},
 ))
 _register(TagSpec(
+    name="jade_lizard", kind="option", usage="n/a",
+    named={"delta": _p("delta", NUMBER, 25), "width": _p("width", NUMBER, 5),
+           "dte": _p("dte", NUMBER, 45)},
+))
+_register(TagSpec(
     name="straddle", kind="option", usage="n/a",
     named={"dte": _p("dte", NUMBER, 45)},
 ))

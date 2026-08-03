@@ -245,6 +245,12 @@ def explain_strategy(strategy: dict) -> str:
                 line = (f"Sell the ~{delta}-delta put and call, buy wings {width} points "
                         f"further out (~{dte} days out)")
                 note = "An iron condor: max loss is capped by the wings."
+            elif otype == "jade_lizard":
+                line = (f"Sell the ~{delta}-delta put and the ~{delta}-delta call, "
+                        f"buy a call {width} points higher (~{dte} days out)")
+                note = ("A jade lizard. If the total credit exceeds the call spread "
+                        "width there is no upside risk at all; the downside is a "
+                        "naked put and stays undefined.")
             elif otype == "straddle":
                 line = f"Sell the at-the-money straddle ~{dte} days out"
                 note = "Undefined risk until closed."
