@@ -61,11 +61,45 @@ def _supertrend_code(n: int, mult: float, final_expr: str) -> str:
     )
 
 
-def _hcode(condition: Dict[str, Any]) -> str:
+def _hcode(condition: Dict[str, Any], uid: str = "") -> str:
     """Emit the boolean Series expression for one condition. Returns a
     Python source snippet that assigns to `cond` and is safe to inline."""
     ctype = condition["type"]
     p = condition.get("params", {}) or {}
+
+    if ctype == "group":
+        # A parenthesized sub-rule. Children emit under uniquified names
+        # (uid threads the nesting path), then combine under the group's
+        # own connector. Helper vars inside child snippets (ema, gap_pct)
+        # may repeat across siblings; that is already true of the flat
+        # combiner and is safe because each child consumes its helpers
+        # immediately, in order.
+        logic = p.get("match_logic", "all")
+        op = "&" if logic == "all" else "|"
+        parts, names = [], []
+        for i, c in enumerate(p.get("conditions", [])):
+            snip = _hcode({"type": c["condition"], "params": c.get("params", {})},
+                          uid=f"{uid}_{i}")
+            var = f"_grp{uid}_{i}"
+            parts.append(snip.replace("cond =", f"{var} ="))
+            names.append(var)
+        body = "\n    ".join(parts)
+        return f"{body}\n    cond = ({f' {op} '.join(names)})"
+
+    if ctype in ("sweep_low", "sweep_high"):
+        # Took out the prior N-bar extreme intrabar, closed back through
+        # it — the stop run and reclaim in one bar. Both halves read this
+        # bar and the PRIOR window (shift(1)), so nothing peeks forward.
+        n = int(p.get("period", 20))
+        if ctype == "sweep_low":
+            return (
+                f"prior_min = df['low'].shift(1).rolling({n}, min_periods={n}).min()\n"
+                f"    cond = ((df['low'] < prior_min) & (close > prior_min)).fillna(False)"
+            )
+        return (
+            f"prior_max = df['high'].shift(1).rolling({n}, min_periods={n}).max()\n"
+            f"    cond = ((df['high'] > prior_max) & (close < prior_max)).fillna(False)"
+        )
 
     if ctype == "sequence":
         # `A then within N bars B`. The window is counted BACKWARDS from the
@@ -1982,8 +2016,17 @@ def _find_cloud_only(strategy: Dict[str, Any]) -> list:
 
     def scan(conds):
         for c in conds or []:
-            if c.get("condition") in CLOUD_ONLY_CONDITIONS:
-                found.append(c["condition"])
+            name = c.get("condition")
+            if name in CLOUD_ONLY_CONDITIONS:
+                found.append(name)
+            p = c.get("params") or {}
+            # Conditions nest: groups carry children, sequences carry a
+            # first and a second. A hosted-only condition hidden one
+            # level down must be found exactly as readily as a flat one.
+            if name == "group":
+                scan(p.get("conditions"))
+            elif name == "sequence":
+                scan([x for x in (p.get("first"), p.get("second")) if x])
 
     scan((strategy.get("entry") or {}).get("conditions"))
     scan((strategy.get("exit") or {}).get("conditions"))

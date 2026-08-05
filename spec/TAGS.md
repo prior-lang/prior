@@ -108,6 +108,7 @@ Use bare: `when [macd_cross_up]`. Compiles to `macd_crosses_above_signal` / `mac
 | Tag / form | Kind | Params (defaults) | Compiles to |
 |---|---|---|---|
 | `[new_high]` / `[new_low]` | predicate | period (252) | `price_new_high` / `price_new_low` — close at/beyond the highest/lowest close of the prior N bars |
+| `[sweep]` / `[sweep_high]` | predicate | period (20) | `sweep_low` / `sweep_high` — the bar takes out the prior N-bar low/high intrabar and closes back through it: the stop run and reclaim (or rejection) in one tag |
 | `[gap_up 2%]` / `[gap_down 2%]` | predicate | gap (2%) | `gap_up` / `gap_down` — open at least N% above/below the prior close |
 | `[up_days 3]` / `[down_days 3]` | predicate | count (required) | `up_days` / `down_days` — N consecutive higher/lower closes |
 | `price above 250` / `price below 10` | comparison | level | `price_above_level` / `price_below_level` — absolute price levels |

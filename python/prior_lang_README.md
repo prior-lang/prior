@@ -210,6 +210,8 @@ prior trace strategy.prior --data bars.csv --date 2026-03-14
                                                  verdict on any bar
 ```
 
+**One file, one ticker, unless you say otherwise.** A bars file with a `ticker` column is treated as a universe: the strategy runs independently on every symbol in it and the results are reported per ticker, not as one blended curve. That is worth knowing before you point it at a panel, because it changes what the numbers mean. Universe runs also print a reminder that a constituent list is today's constituents, so long backtests over one inherit survivorship bias.
+
 Strategies are accepted as `.prior` text or as the interchange `.json`. Every verb takes either, and `prior fmt strategy.json` converts JSON back into readable PRIOR text.
 
 Generating strategies from a pipeline rather than writing them by hand? [`spec/strategy.schema.json`](https://github.com/prior-lang/prior/blob/main/spec/strategy.schema.json) is a JSON Schema for the interchange, bundled in the package so you can validate structure before the compiler sees it:

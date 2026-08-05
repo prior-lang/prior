@@ -151,6 +151,20 @@ _register(TagSpec(
     named={"period": _p("period", NUMBER, 252)},
 ))
 _register(TagSpec(
+    # A sweep: this bar took out the prior N-bar low, and the close came
+    # back above it — the stop-run-and-reclaim in a single tag. The two
+    # halves both read this bar and the prior window, so lookahead stays
+    # impossible by construction.
+    name="sweep", kind="condition", usage="predicate",
+    positional=[_p("period", NUMBER, 20)],
+    named={"period": _p("period", NUMBER, 20)},
+))
+_register(TagSpec(
+    name="sweep_high", kind="condition", usage="predicate",
+    positional=[_p("period", NUMBER, 20)],
+    named={"period": _p("period", NUMBER, 20)},
+))
+_register(TagSpec(
     name="gap_up", kind="condition", usage="predicate",
     positional=[_p("gap", PERCENT, 2.0)],
 ))

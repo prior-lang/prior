@@ -13,7 +13,7 @@ import json
 
 from .errors import PriorError
 from .formatter import format_program
-from .parser import Comparison, Predicate, Program, Sequence, TagNode
+from .parser import Group, Comparison, Predicate, Program, Sequence, TagNode
 
 
 def _tag(name: str, pos=None, named=None, params=None) -> TagNode:
@@ -54,6 +54,12 @@ def _condition_to_term(cond: dict):
 def _condition_to_term_inner(cond: dict):
     name = cond["condition"]
     p = cond.get("params", {}) or {}
+
+    if name == "group":
+        return Group(
+            logic=p.get("match_logic", "all"),
+            terms=[_condition_to_term(c) for c in p.get("conditions", [])],
+        )
 
     if name == "sequence":
         return Sequence(
@@ -137,6 +143,13 @@ def _condition_to_term_inner(cond: dict):
         surface = "new_high" if name.endswith("high") else "new_low"
         pos = []
         if _n(p.get("period", 252)) != 252:
+            pos.append(("number", _n(p["period"])))
+        return Predicate(_tag(surface, pos))
+
+    if name in ("sweep_low", "sweep_high"):
+        surface = "sweep" if name == "sweep_low" else "sweep_high"
+        pos = []
+        if _n(p.get("period", 20)) != 20:
             pos.append(("number", _n(p["period"])))
         return Predicate(_tag(surface, pos))
 

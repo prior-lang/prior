@@ -30,6 +30,8 @@ _PREDICATE_MAP = {
     "heavy_volume": "volume_in_top_pct",
     "new_high": "price_new_high",
     "new_low": "price_new_low",
+    "sweep": "sweep_low",
+    "sweep_high": "sweep_high",
     "gap_up": "gap_up",
     "gap_down": "gap_down",
     "up_days": "up_days",
@@ -69,6 +71,16 @@ class Comparison:
 @dataclass
 class Predicate:
     tag: TagNode
+    line: int = 0
+
+
+@dataclass
+class Group:
+    """A parenthesized sub-rule with its own connector. The one way to
+    mix `and` with `or`: the parentheses say which binds first, so there
+    is never a precedence question to remember."""
+    logic: str          # "all" | "any"
+    terms: list
     line: int = 0
 
 
@@ -395,6 +407,8 @@ def _operand_desc(op) -> str:
 def _term_timeframe(term) -> str | None:
     """The 'on TF' of a term, from whichever tag carries it; conflict is an error."""
     tags = []
+    if isinstance(term, Group):
+        return None
     if isinstance(term, Predicate):
         tags = [term.tag]
     elif isinstance(term, Comparison):
@@ -417,6 +431,24 @@ def _desugar(term) -> dict:
 
 
 def _desugar_inner(term) -> dict:
+    if isinstance(term, tuple) and len(term) == 2 and isinstance(term[1], list):
+        # A parenthesized chain used where a single term is expected
+        # (a sequence side). Same normalization the rule level gets.
+        logic, items = term
+        if len(items) == 1 and not isinstance(items[0], tuple):
+            return _desugar_inner(items[0])
+        term = Group(logic=logic or "all",
+                     terms=[it for it in items])
+    if isinstance(term, Group):
+        # Nested conditions live inside params for the same reason
+        # Sequence's do: every IR consumer forwards params verbatim.
+        return {
+            "condition": "group",
+            "params": {
+                "match_logic": term.logic,
+                "conditions": [_desugar(x) for x in term.terms],
+            },
+        }
     if isinstance(term, Sequence):
         # Nested conditions live inside params so every existing IR consumer
         # (which forwards params verbatim) carries them without change.
@@ -450,7 +482,7 @@ def _desugar_inner(term) -> dict:
             return {"condition": name, "params": {"multiplier": p["multiplier"], "period": int(p["period"])}}
         if tag.name == "heavy_volume":
             return {"condition": name, "params": {"top_pct": p["top_pct"], "period": int(p["period"])}}
-        if tag.name in ("new_high", "new_low"):
+        if tag.name in ("new_high", "new_low", "sweep", "sweep_high"):
             return {"condition": name, "params": {"period": int(p["period"])}}
         if tag.name in ("gap_up", "gap_down"):
             return {"condition": name, "params": {"min_gap_pct": float(p["gap"])}}
@@ -1082,7 +1114,8 @@ def _parse_expr(cur: _Cursor, stop_at_action: bool = False, stop_words: tuple = 
             cur.next()
             logic2, items2 = and_chain()
             if logic == "all" or logic2 == "all":
-                cur.err("one rule combines with all 'and' or all 'or' — mixing needs a later version", tok=tok)
+                cur.err("mixing 'and' with 'or' needs parentheses to say which "
+                        "binds first: (a or b) and c", tok=tok)
             logic = "any"
             items = items + items2
         else:
@@ -1091,23 +1124,29 @@ def _parse_expr(cur: _Cursor, stop_at_action: bool = False, stop_words: tuple = 
 
 
 def _flatten(node, cur: _Cursor):
-    """Flatten nested (logic, items) trees; reject mixed logic."""
+    """Normalize nested (logic, items) trees.
+
+    Same-logic nesting flattens away — ((a or b) or c) is one any-list,
+    so adding redundant parentheses never changes the strategy's shape
+    or its canonical hash. Different-logic parenthesized children stay
+    as Group nodes: that is how `(a or b) and c` exists at all. Bare
+    mixing without parentheses is still rejected where the chains are
+    parsed, with the error pointing here.
+    """
     logic, items = node
     flat = []
-    child_logics = set()
     for it in items:
         if isinstance(it, tuple) and len(it) == 2 and isinstance(it[1], list):
             sub_logic, sub_items = _flatten(it, cur)
-            if sub_logic is not None:
-                child_logics.add(sub_logic)
-            flat.extend(sub_items)
+            if sub_logic is None or logic is None or sub_logic == logic or len(sub_items) == 1:
+                if logic is None:
+                    logic = sub_logic
+                flat.extend(sub_items)
+            else:
+                flat.append(Group(logic=sub_logic, terms=sub_items))
         else:
             flat.append(it)
-    if logic is not None:
-        child_logics.add(logic)
-    if len(child_logics) > 1:
-        cur.err("one rule combines with all 'and' or all 'or' — mixing needs a later version")
-    return (child_logics.pop() if child_logics else None, flat)
+    return (logic, flat)
 
 
 # ── Statements ─────────────────────────────────────────────────────
@@ -1455,6 +1494,20 @@ def _tf_minutes(tf: str) -> int:
 def _check_condition_timeframes(prog: Program, conditions: list) -> None:
     base = prog.timeframe or "1d"
     for c in conditions:
+        # A timeframe'd condition inside parentheses would silently lose
+        # its 'on TF' in codegen (higher-TF conditions are hoisted to
+        # module helpers only at the top level). Refusing loudly beats
+        # backtesting something other than what was written.
+        if c.get("condition") == "group":
+            for child in (c.get("params") or {}).get("conditions", []):
+                if child.get("timeframe") is not None:
+                    raise PriorError(
+                        "'on TF' conditions cannot sit inside parentheses "
+                        "yet — lift the higher-timeframe rule out of the "
+                        "group and combine it with 'and'"
+                    )
+            _check_condition_timeframes(prog, (c.get("params") or {}).get("conditions", []))
+            continue
         tf = c.get("timeframe")
         if tf is None:
             continue

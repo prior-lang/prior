@@ -79,7 +79,7 @@ def test_mixed_and_or_rejected():
         "universe [sp_top_30]\nwhen [rsi] < 30 and [macd_cross_up] or [volatile 2%]\n"
         "  buy [5% portfolio]\nsell when [after 5 bars]"
     )
-    assert "all 'and' or all 'or'" in e.message
+    assert "needs parentheses" in e.message
 
 
 def test_exit_tags_reject_and():

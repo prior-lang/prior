@@ -1,0 +1,11 @@
+strategy "Swept and Confirmed"
+
+universe $SPY
+timeframe 1d
+
+when ([sweep 20] or [gap_down 2%]) and price above [sma 200]
+  buy [risk 1%]
+
+sell when [rsi] > 65
+  or [stop 3%]
+  or [after 15 bars]

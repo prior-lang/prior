@@ -41,6 +41,27 @@ def _condition_text_inner(cond: dict) -> str:
     name = cond["condition"]
     p = cond.get("params", {}) or {}
 
+    if name == "group":
+        logic = p.get("match_logic", "all")
+        parts = [_condition_text(c) for c in p.get("conditions", [])]
+        joiner = " and " if logic == "all" else " or "
+        head = "all of: " if logic == "all" else "either "
+        # Always visually grouped: this clause usually sits inside a
+        # larger and/or sentence, and "either a or b and c" is exactly
+        # the ambiguity the parentheses exist to kill.
+        if logic == "any" and len(parts) == 2:
+            return f"(either {parts[0]} or {parts[1]})"
+        return f"({head}{joiner.join(parts)})"
+
+    if name == "sweep_low":
+        n = int(p.get("period", 20))
+        return (f"the bar takes out the prior {_num(n)}-bar low and closes "
+                f"back above it (a sweep and reclaim)")
+    if name == "sweep_high":
+        n = int(p.get("period", 20))
+        return (f"the bar takes out the prior {_num(n)}-bar high and closes "
+                f"back below it (a sweep and rejection)")
+
     if name == "sequence":
         n = int(p.get("window", 0))
         first = _condition_text_inner(p["first"])

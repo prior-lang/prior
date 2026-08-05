@@ -10,7 +10,7 @@ kept even when they equal defaults.
 
 from __future__ import annotations
 
-from .parser import Comparison, Predicate, Program, Sequence, TagNode
+from .parser import Comparison, Group, Predicate, Program, Sequence, TagNode
 
 
 def _num(v: float) -> str:
@@ -60,6 +60,9 @@ def _operand(op) -> str:
 
 
 def _term(t) -> str:
+    if isinstance(t, Group):
+        joiner = " and " if t.logic == "all" else " or "
+        return "(" + joiner.join(_term(x) for x in t.terms) + ")"
     if isinstance(t, Sequence):
         bars = "bar" if t.window == 1 else "bars"
         return f"{_term(t.first)} then within {t.window} {bars} {_term(t.second)}"

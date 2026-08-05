@@ -39,6 +39,8 @@ DESCRIPTIONS: dict[str, tuple[str, str]] = {
     "quiet": ("Rolling volatility (ATR%) is below the threshold — regime filter for calm tape.", "when [quiet 1.5%]"),
     "new_high": ("Close is the highest of the lookback (default 252 bars — a 52-week high on dailies).", "when [new_high]"),
     "new_low": ("Close is the lowest of the lookback.", "when [new_low 63]"),
+    "sweep": ("The bar takes out the prior N-bar low intrabar and closes back above it — a stop run and reclaim.", "when [sweep 20]"),
+    "sweep_high": ("The bar takes out the prior N-bar high intrabar and closes back below it — a sweep and rejection.", "when [sweep_high 20]"),
     "gap_up": ("Today opened at least `gap` above yesterday's close.", "when [gap_up 3%]"),
     "gap_down": ("Today opened at least `gap` below yesterday's close.", "when [gap_down 3%]"),
     "up_days": ("The last N bars all closed higher than the bar before.", "when [up_days 3]"),

@@ -1032,6 +1032,38 @@
       ]
     },
     {
+      "name": "sweep",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "The bar takes out the prior N-bar low intrabar and closes back above it \u2014 a stop run and reclaim.",
+      "example": "when [sweep 20]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 20,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "sweep_high",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "The bar takes out the prior N-bar high intrabar and closes back below it \u2014 a sweep and rejection.",
+      "example": "when [sweep_high 20]",
+      "params": [
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 20,
+          "required": false
+        }
+      ]
+    },
+    {
       "name": "target",
       "kind": "exit",
       "usage": "n/a",
