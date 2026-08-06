@@ -57,7 +57,7 @@ prior sample stocks
 prior backtest dip.prior --data prior-samples/stocks_1d.csv.gz --trades
 ```
 
-On the five years of sample data that is a 1.12 Sharpe at a 79% win rate, and the same four untuned lines stay green on 16 of the 20 sample names. The backtest always prints buy-and-hold right next to your return, so you can see exactly when simply holding would have won.
+On the five years of sample data that is a 1.12 Sharpe at a 79% win rate, and the same four untuned lines stay green on 16 of the 20 sample names. The backtest always prints buy-and-hold right next to your return, so you can see exactly when simply holding would have won. Since 0.12.1 the report also states its own assumptions: the Sharpe convention, the cost model in force (zero is the default, and the report says so rather than staying quiet), and how often every rule actually fired, with a loud flag on any rule that never fired at all. A rule that never fires produces the same equity curve as no rule, so the report is the only place that class of bug can become visible.
 
 See exactly what it compiles to: the plain-English readback, the interchange JSON, and the generated Python.
 
@@ -296,6 +296,10 @@ examples/*.prior     complete strategies, from one-liners to pairs trades, the e
 python/prior_lang/   the reference implementation (zero-dependency parser + CLI)
 editors/vscode/      VS Code extension: highlighting, completions, hovers, live diagnostics
 ```
+
+## Acknowledgments
+
+The sequence operator (`then within`, v0.9) and the `[sweep]` / `[sweep_high]` tags (v0.12) came out of field testing by **Precious Ukaegbu**, who reduced a lexer crash to a single line (now a regression test), found the gap in the grammar, and specified the sweep primitive precisely enough to build: a wick below a swing low that closes back above it.
 
 ## License
 

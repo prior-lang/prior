@@ -463,6 +463,8 @@ def _cmd_backtest(args) -> int:
         )
 
     result = run_backtest(strategy, df, capital=args.capital, cost_bps=cost_bps)
+    from .trace import fire_counts
+    result["rule_activity"] = fire_counts(strategy, df)
     if args.as_json:
         return _emit_json(result)
     sizing_used = strategy.get("position_sizing") or any(
@@ -476,7 +478,10 @@ def _cmd_backtest(args) -> int:
         ("Total return", f"{result['total_return_pct']}%"),
         ("Buy & hold", f"{result['buy_hold_return_pct']}%"),
         ("CAGR", f"{result['cagr_pct']}%"),
-        ("Sharpe", result["sharpe"]),
+        ("Sharpe", f"{result['sharpe']}  ({result['sharpe_note']})"),
+        ("Costs", f"{cost_bps:g} bps per side"
+                  if cost_bps else
+                  "none modeled. Real fills pay fees and slippage; add --fee-bps / --slippage-bps"),
         ("Volatility", f"{result['volatility_pct']}%"),
         ("Max drawdown", f"{result['max_drawdown_pct']}%"),
         ("Trades", result["trades"]),
@@ -492,6 +497,19 @@ def _cmd_backtest(args) -> int:
     width = max(len(label) for label, _ in rows)
     for label, value in rows:
         print(f"  {label:<{width}}  {value}")
+    activity = result.get("rule_activity") or []
+    if activity:
+        print("\nRule activity (bars where each condition was true):")
+        tw = max(len(a["text"]) for a in activity)
+        ww = max(len(a["where"]) for a in activity)
+        for a in activity:
+            flag = "   <-- NEVER FIRED" if a["true"] == 0 else ""
+            print(f"  {a['where']:<{ww}}  {a['text']:<{tw}}  {a['true']} of {a['bars']} bars{flag}")
+        if any(a["true"] == 0 for a in activity):
+            print(
+                "  A condition that is never true cannot have shaped this result.\n"
+                "  If that surprises you, the rule is broken, not quiet."
+            )
     if args.trades:
         print("\nTrades:")
         _print_trades(trade_log(strategy, df))

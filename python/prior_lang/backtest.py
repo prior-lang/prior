@@ -15,6 +15,12 @@ import math
 from .codegen import compile_strategy
 
 
+# The reporting convention, stated wherever the number goes. Two Sharpe
+# conventions circulate (daily curve vs per trade returns) and an
+# unlabeled number lets a reader assume the flattering one.
+SHARPE_NOTE = "daily returns, annualized by sqrt(252)"
+
+
 def _require_pandas():
     try:
         import numpy as np
@@ -367,6 +373,8 @@ def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
         "buy_hold_return_pct": round(float(closes[-1] / closes[0] - 1) * 100, 2),
         "cagr_pct": round(cagr * 100, 2),
         "sharpe": round(sharpe, 3),
+        "sharpe_note": SHARPE_NOTE,
+        "cost_bps": float(cost_bps),
         "volatility_pct": round(vol * 100, 2),
         "max_drawdown_pct": round(max_dd * 100, 2),
         "trades": len(trades),
@@ -523,6 +531,8 @@ def run_pair_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
         "spread_end": round(float(spread.iloc[-1]), 4),
         "cagr_pct": round(cagr * 100, 2),
         "sharpe": round(sharpe, 3),
+        "sharpe_note": SHARPE_NOTE,
+        "cost_bps": float(cost_bps),
         "max_drawdown_pct": round(max_dd * 100, 2),
         "trades": len(trades),
         "win_rate_pct": round(100 * len(wins) / len(trades), 2) if trades else None,
@@ -597,6 +607,8 @@ def run_ranking_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
         "equal_weight_universe_pct": round(bench_total * 100, 2),
         "cagr_pct": round(cagr * 100, 2),
         "sharpe": round(sharpe, 3),
+        "sharpe_note": SHARPE_NOTE,
+        "cost_bps": float(cost_bps),
         "max_drawdown_pct": round(max_dd * 100, 2),
         "rebalances": int(len(reb_turnover)),
         "avg_turnover_pct": round(float(reb_turnover.mean()) * 100, 2) if len(reb_turnover) else 0.0,

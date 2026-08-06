@@ -77,6 +77,51 @@ def _exit_specs(strategy: dict) -> list[tuple[str, dict]]:
     return [(kw, strategy.get("exit", {}) or {})]
 
 
+def fire_counts(strategy: dict, df) -> list:
+    """Whole-run activity for every condition: bars evaluated, bars true.
+
+    The class of bug this exists for: a rule that never fires produces
+    the same equity curve as no rule at all, so nothing else in the
+    report can reveal it. Whole-run counts make a dead rule loud on the
+    first backtest instead of a discovery weeks in. `trace` answers
+    "why didn't it fire on Tuesday"; this answers "did it ever fire at
+    all", which is the question nobody thinks to ask.
+
+    An assist, never a dependency: a condition that cannot be evaluated
+    in isolation (spread operands, hosted data) is skipped, and any
+    failure returns what was counted so far rather than raising.
+    Stops, targets and time exits are scalar fields on the exit spec,
+    not members of `conditions`, so everything walked here is a pure
+    series by construction.
+    """
+    rows: list = []
+    if strategy.get("options") or strategy.get("ranking"):
+        return rows
+    try:
+        rules = _rules_of(strategy)
+        for r, rule in enumerate(rules):
+            where = ("when" if len(rules) == 1
+                     else f"rule {r + 1} ({rule['direction']})")
+            for c in rule["conditions"]:
+                try:
+                    s = _cond_series(c, df)
+                except Exception:
+                    continue
+                rows.append({"where": where, "text": _condition_text(c),
+                             "bars": int(len(s)), "true": int(s.sum())})
+        for kw, spec in _exit_specs(strategy):
+            for c in spec.get("conditions") or []:
+                try:
+                    s = _cond_series(c, df)
+                except Exception:
+                    continue
+                rows.append({"where": kw, "text": _condition_text(c),
+                             "bars": int(len(s)), "true": int(s.sum())})
+    except Exception:  # noqa: BLE001 — a report assist must not kill a run
+        pass
+    return rows
+
+
 def trace_report(strategy: dict, df, date=None, last: int = 1) -> dict:
     """Verdict of every condition on the last `last` bars ending at
     `date` (default: the final bar). Returns a dict of per-date rows."""
