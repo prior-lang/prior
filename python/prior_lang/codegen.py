@@ -1435,6 +1435,8 @@ def _generate_structure_code(
 
     return f'''{metadata}{gate_fn}def _prior_pick(ch_d, right, target_delta, target_dte, d):
     """Nearest expiry >= DTE, then nearest |delta|; deterministic ties."""
+    if target_delta > 1:
+        target_delta = target_delta / 100.0  # trader units -> decimals
     cands = ch_d[ch_d["right"] == right]
     if len(cands) == 0:
         return None
@@ -1445,7 +1447,9 @@ def _generate_structure_code(
     days = (pd.to_datetime(cands["expiry"]) - d).dt.days
     best_exp = cands.loc[days.idxmin(), "expiry"]
     cands = cands[cands["expiry"] == best_exp].copy()
-    cands["_dgap"] = (cands["delta"].abs() - target_delta).abs()
+    adel = cands["delta"].abs()
+    adel = adel.where(adel <= 1.0, adel / 100.0)  # accept either delta convention
+    cands["_dgap"] = (adel - target_delta).abs()
     cands = cands.sort_values(
         ["_dgap", "strike"], ascending=[True, right == "P"]
     )
@@ -1456,10 +1460,14 @@ def _generate_structure_code(
 
 def _prior_pick_at(ch_d, expiry, right, target_delta):
     """Nearest |delta| within one expiry."""
+    if target_delta > 1:
+        target_delta = target_delta / 100.0  # trader units -> decimals
     cands = ch_d[(ch_d["expiry"] == expiry) & (ch_d["right"] == right)].copy()
     if len(cands) == 0:
         return None
-    cands["_dgap"] = (cands["delta"].abs() - target_delta).abs()
+    adel = cands["delta"].abs()
+    adel = adel.where(adel <= 1.0, adel / 100.0)  # accept either delta convention
+    cands["_dgap"] = (adel - target_delta).abs()
     cands = cands.sort_values(["_dgap", "strike"], ascending=[True, right == "P"])
     row = cands.iloc[0]
     return {{"expiry": row["expiry"], "strike": float(row["strike"]),
@@ -1651,7 +1659,7 @@ def generate_options_code(options: Dict[str, Any], risk: Dict[str, Any] | None =
     elif opt.get("type") == "csp":
         put_enabled = "True"
         call_enabled = "False"
-        assigned_state = "'assigned_hold'"  # terminal: hold shares, no calls
+        assigned_state = "'assigned_hold'"  # transient: shares sold next close
         kind_desc = "cash-secured puts"
     else:  # covered_call
         put_enabled = "False"
@@ -1663,6 +1671,8 @@ def generate_options_code(options: Dict[str, Any], risk: Dict[str, Any] | None =
 
     return f'''{metadata}{gate_fn}def _prior_pick(ch_d, right, target_delta, target_dte, d):
     """Nearest expiry >= DTE, then nearest |delta|; deterministic ties."""
+    if target_delta > 1:
+        target_delta = target_delta / 100.0  # trader units -> decimals
     cands = ch_d[ch_d["right"] == right]
     if len(cands) == 0:
         return None
@@ -1673,7 +1683,9 @@ def generate_options_code(options: Dict[str, Any], risk: Dict[str, Any] | None =
     days = (pd.to_datetime(cands["expiry"]) - d).dt.days
     best_exp = cands.loc[days.idxmin(), "expiry"]
     cands = cands[cands["expiry"] == best_exp].copy()
-    cands["_dgap"] = (cands["delta"].abs() - target_delta).abs()
+    adel = cands["delta"].abs()
+    adel = adel.where(adel <= 1.0, adel / 100.0)  # accept either delta convention
+    cands["_dgap"] = (adel - target_delta).abs()
     cands = cands.sort_values(
         ["_dgap", "strike"], ascending=[True, right == "P"]
     )
@@ -1706,6 +1718,16 @@ def generate_option_orders(df, chains):
     for d in df.index:
         ch_d = chains[chains["date"] == d]
         px = float(df.at[d, "close"])
+
+        if state == "assigned_hold":
+            # A put program is not a stock program: shares taken by
+            # assignment are sold at the next close and the put cycle
+            # resumes. Holding them silently turned every assigned CSP
+            # into an unmanaged buy-and-hold wearing an options label.
+            orders.append({{"date": d, "action": "sell_stock", "right": None,
+                           "strike": None, "expiry": None, "price": px,
+                           "state": "cash"}})
+            state = "cash"
 
         if pos is not None:
             row = ch_d[(ch_d["expiry"] == pos["expiry"])

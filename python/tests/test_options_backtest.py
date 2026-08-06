@@ -61,22 +61,25 @@ def test_put_spread_profit_take_to_the_dollar():
     assert res["final_shares"] == 0
 
 
-def test_csp_assignment_carries_stock():
+def test_csp_assignment_sells_stock_and_resumes():
     # Underlying at 100, then drops to 85 before expiry: the ~25-delta
-    # put (strike 90) finishes ITM -> assigned, shares held at the end.
+    # put (strike 90) finishes ITM -> assigned. Since v0.13 a put program
+    # does not quietly become a stock position: the shares go out at the
+    # next close and the ledger ends flat.
     days = pd.date_range("2026-01-05", periods=45, freq="D")
     closes = [100.0] * 35 + [85.0] * 10
     df = _underlying(days, closes)
-    # Chains priced off a flat 100 so the entry picks strike 90; the
-    # assignment decision uses the real underlying close.
     strategy = prior_lang.compile_source(
         "universe $SPY\nwhen price above 1\n  write [csp delta=25 dte=30]\n"
         "close at [loss 900%]\n"
     )
     res = run_options_backtest(strategy, df, _chains(days, days[40]))
-    assert res["final_shares"] == 100           # assigned 1 contract
-    # Paid strike 90 for stock now marked at 85: stock leg lost money,
-    # premium cushions it.
+    acts = res["orders"]["action"].tolist()
+    assert "assigned" in acts
+    assert "sell_stock" in acts[acts.index("assigned"):]
+    assert res["final_shares"] == 0
+    # Bought at strike 90, sold at the 85 close: the stock leg realized
+    # the loss instead of hiding it in an open position.
     assert res["stock_pnl"] == pytest.approx((85.0 - 90.0) * 100, abs=1e-6)
     assert res["option_pnl"] > 0                # kept the premium
 

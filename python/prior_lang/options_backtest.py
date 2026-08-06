@@ -124,6 +124,9 @@ def run_options_backtest(strategy: dict, df, chains, contract_fee: float = 0.0) 
             elif a == "called_away":
                 cash += o["strike"] * mult
                 shares -= contracts * 100
+            elif a == "sell_stock":
+                cash += o["price"] * mult
+                shares -= contracts * 100
             # expired: no cash flow
 
     fees = 0.0
@@ -240,6 +243,9 @@ def _mark_daily(pd, df, chains, orders, mult, is_structure, fee_per_fill: float 
                 realized += leg["strike"] * mult
                 shares -= int(mult)
                 open_legs = []
+            elif a == "sell_stock":
+                realized += o["price"] * mult
+                shares -= int(mult)
         if open_legs:
             req = _requirement(open_legs, entry_px, mult)
             if req is None:
