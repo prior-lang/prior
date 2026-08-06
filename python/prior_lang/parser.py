@@ -761,8 +761,15 @@ def _did_you_mean(name: str, candidates) -> str | None:
 
 
 def _parse_tag(cur: _Cursor) -> TagNode:
-    lb = cur.next()  # lbrack consumed by caller check
-    assert lb.kind == "lbrack"
+    # Callers usually verify the '[' first, but not all can — and a bare
+    # tag name here must be a readable refusal, not an AssertionError.
+    # Found by a hosted model writing `write csp delta=25` without the
+    # brackets, which crashed the whole run instead of costing one attempt.
+    lb = cur.next()
+    if lb is None or lb.kind != "lbrack":
+        cur.err("a tag in square brackets is required here",
+                tok=lb,
+                suggestion="tags always wrap in brackets: [csp delta=25 dte=45], [dte 7], [profit 50%]")
     tok = cur.peek()
     if tok is None:
         cur.err("unclosed '['")
@@ -1260,6 +1267,10 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
             if buy.value == "write":
                 if prog.opt_form is not None:
                     cur.err("one option rule (or one wheel) per strategy for now", tok=buy)
+                nxt = cur.peek()
+                if nxt is None or nxt.kind != "lbrack":
+                    cur.err("write takes a bracketed option tag", tok=buy,
+                            suggestion="write [csp delta=25 dte=45] — the brackets are part of the syntax")
                 otag = _parse_tag(cur)
                 if otag.spec is None or otag.spec.kind != "option":
                     cur.err(f"write takes an option tag, not [{otag.name}]", tok=buy,
