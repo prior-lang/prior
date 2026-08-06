@@ -64,11 +64,19 @@ def load_chains(path: str):
     return df
 
 
-def run_options_backtest(strategy: dict, df, chains, contract_fee: float = 0.0) -> dict:
+def run_options_backtest(strategy: dict, df, chains, contract_fee: float = 0.0,
+                         score_from=None) -> dict:
     """Execute an options strategy; return a cash-ledger report.
 
     contract_fee: commission per contract per fill (settlements and
-    expirations are free; opens, closes, and rolls pay)."""
+    expirations are free; opens, closes, and rolls pay).
+
+    score_from: optional timestamp splitting WARMUP from SCORING. Orders
+    are generated over all of df (so long indicators in the entry gate
+    have their history), then the report covers only positions OPENED at
+    or after score_from and only bars from there on. Cycles begun during
+    warmup are excluded whole — counting their exits without their
+    entries would corrupt the ledger."""
     pd, np = _require_pandas()
 
     contracts = int((strategy.get("risk") or {}).get("contracts", 1))
@@ -78,6 +86,22 @@ def run_options_backtest(strategy: dict, df, chains, contract_fee: float = 0.0) 
     namespace = {"pd": pd, "np": np, "math": math}
     exec(code, namespace)  # our own generated code
     orders = namespace["generate_option_orders"](df, chains)
+
+    if score_from is not None:
+        ts = pd.Timestamp(score_from)
+        df = df[df.index >= ts]
+        if len(orders):
+            opens = {"open", "roll_open", "sell_put", "sell_call"}
+            if "group" in orders.columns:
+                first_open = (orders[orders["action"].isin(opens)]
+                              .groupby("group")["date"].min())
+                good = set(first_open[first_open >= ts].index)
+                orders = orders[orders["group"].isin(good)].reset_index(drop=True)
+            else:
+                pos_idx = orders.index[(orders["action"].isin(opens))
+                                       & (orders["date"] >= ts)]
+                orders = (orders.loc[pos_idx[0]:].reset_index(drop=True)
+                          if len(pos_idx) else orders.iloc[0:0])
 
     if len(orders) == 0:
         # No entries ever fired (gate never true, or no viable contracts):

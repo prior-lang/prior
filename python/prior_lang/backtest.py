@@ -290,7 +290,7 @@ def _weight_series(strategy: dict, df, signals, capital: float, namespace):
 
 
 def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
-                 cost_bps: float = 0.0) -> dict:
+                 cost_bps: float = 0.0, score_from=None) -> dict:
     """Execute the strategy over one instrument's bars; return metrics.
 
     `mask` (optional bool Series on df's index) zeroes signals outside a
@@ -302,6 +302,15 @@ def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
     becomes 5000/capital, [risk 1%] sizes off the stop distance. Without
     it the runner keeps its documented default: one fully-allocated
     position, sizing tags as metadata.
+
+    `score_from` (optional timestamp) splits WARMUP from SCORING:
+    signals are computed over all of `df`, metrics only over bars at or
+    after `score_from`. This is how an out-of-sample window is scored
+    honestly for strategies with long indicators — a 200-day average is
+    NaN for the first 200 bars of any freshly sliced window, so scoring
+    a bare holdout silently reports "never traded" for exactly the
+    strategies with the longest memory. Warming up on earlier bars leaks
+    nothing: live trading carries its indicator history in the same way.
     """
     pd, np = _require_pandas()
 
@@ -313,6 +322,10 @@ def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
         signals = signals.where(mask, 0.0)
     if capital:
         signals = signals * _weight_series(strategy, df, signals, capital, namespace)
+
+    if score_from is not None:
+        keep = df.index >= pd.Timestamp(score_from)
+        df, signals = df[keep], signals[keep]
 
     close = df["close"].astype(float)
     # Signal at bar i → position over bar i+1 (no lookahead at the fill).
