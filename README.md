@@ -299,7 +299,7 @@ editors/vscode/      VS Code extension: highlighting, completions, hovers, live 
 
 ## Acknowledgments
 
-The windowed sequence operator (`then within`, v0.9) and the `[sweep]` / `[sweep_high]` tags (v0.12) exist because **Precious Ukaegbu** field-tested PRIOR against a real liquidity-sweep trading system: isolated a first-line lexer crash to a one-line repro (now a regression test), identified the arm-then-confirm gap in the grammar, and specified the wick-below-a-swing-low-that-closes-back-above primitive precisely enough to build. Feedback of that caliber shapes the language; bring more of it.
+The sequence operator (`then within`, v0.9) and the `[sweep]` / `[sweep_high]` tags (v0.12) came out of field testing by **Precious Ukaegbu**, who reduced a lexer crash to a single line (now a regression test), found the gap in the grammar, and specified the sweep primitive precisely enough to build: a wick below a swing low that closes back above it.
 
 ## License
 
