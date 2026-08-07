@@ -529,6 +529,8 @@ def _strategy_to_source_body(strategy: dict) -> str:
             prog.risk_tags.append(_tag("daily_loss", [("dollar", _n(risk["daily_loss_limit_usd"]))]))
         if "cooldown_bars" in risk:
             prog.risk_tags.append(_tag("cooldown", [("number", _n(risk["cooldown_bars"]))], params={"bars": risk["cooldown_bars"]}))
+        if "after_losses" in risk:
+            prog.risk_tags.append(_tag("after_losses", [("number", _n(risk["after_losses"]))], params={"count": risk["after_losses"]}))
         if risk.get("reverse"):
             prog.risk_tags.append(_tag("reverse"))
         return format_program(prog)
@@ -562,6 +564,8 @@ def _strategy_to_source_body(strategy: dict) -> str:
         prog.risk_tags.append(_tag("daily_loss", [("dollar", _n(risk["daily_loss_limit_usd"]))]))
     if "cooldown_bars" in risk:
         prog.risk_tags.append(_tag("cooldown", [("number", _n(risk["cooldown_bars"]))], params={"bars": risk["cooldown_bars"]}))
+    if "after_losses" in risk:
+        prog.risk_tags.append(_tag("after_losses", [("number", _n(risk["after_losses"]))], params={"count": risk["after_losses"]}))
     if risk.get("reverse"):
         prog.risk_tags.append(_tag("reverse"))
 

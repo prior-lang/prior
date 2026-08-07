@@ -1,0 +1,21 @@
+# Trade the strategy only when the strategy itself just lost twice in a
+# row. The streak is counted on a shadow book that takes every signal,
+# including the ones this gate turns down — so declining a trade never
+# changes what the counter sees. Yesterday's fill is realized
+# information; conditioning on it carries no lookahead. Specified from
+# field results by Sunil Kumar: the money in his flat book lived almost
+# entirely in the trades taken after consecutive losses.
+
+strategy "Loss Streak Reentry"
+
+universe $SPY
+timeframe 1d
+
+when [rsi] < 35 and price above [sma 200]
+  buy [risk 1%]
+
+sell when [rsi] > 60
+  or [stop 4%]
+  or [after 15 bars]
+
+risk [after_losses 2]

@@ -2137,6 +2137,113 @@ def {fn}(panel):
 ''' + traced_alias
 
 
+_AFTER_LOSSES_RUNTIME = '''
+
+def _after_losses_gate(signals, close, n):
+    """Shadow-book entry gate for risk [after_losses N].
+
+    The base strategy's signals ARE the shadow book: every trade it
+    generates is simulated and its realized close-to-close outcome feeds
+    a consecutive-loss counter. The real book admits a trade only when
+    the counter stands at n or more at entry. Declined trades still
+    update the counter — the gate never feeds back into its own input.
+    An outcome is known at its exit bar's close, so the entry decision
+    reads only realized fills; a flat trade resets the streak.
+    """
+    sig = signals.to_numpy(copy=True)
+    px = close.to_numpy(dtype=float)
+    streak = 0
+    entries = 0
+    admitted = 0
+    declined = set()
+    entry_i = None
+    entry_dir = 0
+    entry_ok = False
+    prev = 0.0
+    for i in range(len(sig)):
+        s = sig[i]
+        opening = s != 0 and prev == 0
+        if entry_i is not None and (s == 0 or (s > 0) != (prev > 0)):
+            outcome = entry_dir * (px[i] / px[entry_i] - 1.0)
+            streak = streak + 1 if outcome < 0 else 0
+            if not entry_ok:
+                declined.add(entry_i)
+                sig[entry_i:i] = 0
+            entry_i = None
+            if s != 0:  # flip: the exit bar opens the next shadow trade
+                opening = True
+        if opening:
+            entry_i, entry_dir = i, (1 if s > 0 else -1)
+            entry_ok = streak >= n
+            entries += 1
+            if entry_ok:
+                admitted += 1
+        prev = s
+    if entry_i is not None and not entry_ok:
+        declined.add(entry_i)
+        sig[entry_i:] = 0
+    out = pd.Series(sig, index=signals.index)
+    stats = {"n": n, "shadow_trades": entries, "admitted": admitted,
+             "declined": entries - admitted}
+    return out, declined, stats
+
+
+def _after_losses_filter_events(events, declined):
+    """Drop the entry/partial/exit events of trades the gate declined."""
+    out = []
+    skipping = False
+    for e in events:
+        if e.get("event") == "entry":
+            skipping = e.get("i") in declined
+            if skipping:
+                continue
+        elif skipping:
+            if e.get("event") == "exit":
+                skipping = False
+            continue
+        out.append(e)
+    return out
+'''
+
+
+def apply_after_losses(code: str, n: int, trace: bool = False) -> str:
+    """Wrap emitted strategy code with the [after_losses N] shadow gate.
+
+    The base generate_signals becomes the shadow book; the exported one
+    returns the gated series with the gate's counts attached as attrs so
+    the backtest report can print them (a gate that admits nothing
+    should be the loudest line of the run, not a silent zero)."""
+    n = int(n)
+    if trace:
+        wrapper = f'''
+
+_inner_signals_traced = generate_signals_traced
+
+
+def generate_signals_traced(df):
+    sig, events = _inner_signals_traced(df)
+    gated, declined, stats = _after_losses_gate(sig, df["close"].astype(float), {n})
+    gated.attrs["after_losses"] = stats
+    return gated, _after_losses_filter_events(events, declined)
+
+
+def generate_signals(df):
+    return generate_signals_traced(df)[0]
+'''
+    else:
+        wrapper = f'''
+
+_inner_signals = generate_signals
+
+
+def generate_signals(df):
+    gated, _declined, stats = _after_losses_gate(_inner_signals(df), df["close"].astype(float), {n})
+    gated.attrs["after_losses"] = stats
+    return gated
+'''
+    return code + _AFTER_LOSSES_RUNTIME + wrapper
+
+
 def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False, trace: bool = False) -> str:
     """Strategy JSON (the parser's output) → Python source string.
 
@@ -2178,8 +2285,13 @@ def compile_strategy(strategy: Dict[str, Any], allow_cloud: bool = False, trace:
 
     uni = strategy.get("universe") or {}
     pair = uni if uni.get("type") == "pair" else None
+    gate_n = int((strategy.get("risk") or {}).get("after_losses") or 0)
 
     def _wrap(code: str) -> str:
+        if gate_n:
+            # Gate before any pair wrapping so a spread strategy's shadow
+            # book counts outcomes on the spread it actually trades.
+            code = apply_after_losses(code, gate_n, trace=trace)
         return generate_pair_code(code, pair, trace=trace) if pair else code
 
     if strategy.get("exits"):  # long+short strategy

@@ -224,8 +224,9 @@ Evaluation is bar-close (SPEC §6); precedence within a bar: stop → breakeven 
 | `[max_position N%]` | percent | no single position may exceed N% of equity at entry |
 | `[daily_loss $N]` | dollar | halt new entries for the day after realized losses reach $N |
 | `[cooldown N]` | number | no re-entry for N bars after any exit — unlike other risk tags, this one shapes generate_signals directly |
+| `[after_losses N]` | number | enter only after N consecutive losing trades. The streak is counted on a shadow book that takes every signal the strategy generates, including trades this gate declines, so the gate never feeds back into its own input. An outcome is a realized close-to-close fill, known at its exit bar; a winning or flat trade resets the streak. Stock strategies only (rules and pairs) — premium programs and ranking strategies refuse it |
 
-Risk tags attach as strategy-level metadata for the runner; they do not alter `generate_signals`.
+Risk tags attach as strategy-level metadata for the runner; they do not alter `generate_signals` — except `[cooldown N]` and `[after_losses N]`, which shape the emitted signals directly.
 
 ---
 

@@ -497,6 +497,18 @@ def _cmd_backtest(args) -> int:
     width = max(len(label) for label, _ in rows)
     for label, value in rows:
         print(f"  {label:<{width}}  {value}")
+    gate = result.get("after_losses")
+    if gate:
+        flag = "   <-- ADMITTED NOTHING" if gate["admitted"] == 0 and gate["shadow_trades"] else ""
+        print(
+            f"\nEntry gate [after_losses {gate['n']}]: admitted {gate['admitted']} of "
+            f"{gate['shadow_trades']} shadow trades{flag}"
+        )
+        if gate["admitted"] == 0 and gate["shadow_trades"]:
+            print(
+                "  The shadow book never reached the loss streak, so every result above\n"
+                "  is a flat book. Lower N, or the gate is testing nothing."
+            )
     activity = result.get("rule_activity") or []
     if activity:
         print("\nRule activity (bars where each condition was true):")

@@ -317,7 +317,9 @@ def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
     code = compile_strategy(strategy)
     namespace = {"pd": pd, "np": np, "math": math}
     exec(code, namespace)  # our own generated code
-    signals = namespace["generate_signals"](df).astype(float)
+    raw_signals = namespace["generate_signals"](df)
+    gate_stats = dict(raw_signals.attrs.get("after_losses") or {})
+    signals = raw_signals.astype(float)
     if mask is not None:
         signals = signals.where(mask, 0.0)
     if capital:
@@ -382,6 +384,7 @@ def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
         "bars": len(df),
         "equity": equity,
         **dollars,
+        **({"after_losses": gate_stats} if gate_stats else {}),
         "total_return_pct": round(total_return * 100, 2),
         "buy_hold_return_pct": round(float(closes[-1] / closes[0] - 1) * 100, 2),
         "cagr_pct": round(cagr * 100, 2),

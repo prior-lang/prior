@@ -39,6 +39,22 @@
       ]
     },
     {
+      "name": "after_losses",
+      "kind": "risk",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "Enter only after N consecutive losing trades. The streak is counted on a shadow book that takes every signal, including trades this gate declines.",
+      "example": "risk [after_losses 2]",
+      "params": [
+        {
+          "name": "count",
+          "kind": "number",
+          "default": null,
+          "required": true
+        }
+      ]
+    },
+    {
       "name": "big_banks",
       "kind": "universe",
       "usage": "n/a",

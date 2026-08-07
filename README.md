@@ -301,6 +301,10 @@ editors/vscode/      VS Code extension: highlighting, completions, hovers, live 
 
 The sequence operator (`then within`, v0.9) and the `[sweep]` / `[sweep_high]` tags (v0.12) came out of field testing by **Precious Ukaegbu**, who reduced a lexer crash to a single line (now a regression test), found the gap in the grammar, and specified the sweep primitive precisely enough to build: a wick below a swing low that closes back above it.
 
+The rule activity table, the Sharpe convention label, the stated cost model (all v0.12.1), and the `[after_losses N]` outcome gate (v0.15) came from a review by **Sunil Kumar**, who read the spec with his own scars attached and then put 35 rejected hypotheses through the grammar as an expressiveness benchmark. He specified the gate's hardest requirement himself: the loss streak must be counted on a shadow book that takes every signal, including the trades the gate declines.
+
+Fractal levels (`[fractal_high N]` / `[fractal_low N]`, v0.14) were specified in review by **Gabriel Guevara Muradas**, including the reveal delay that makes marking a fractal on its own bar unwritable.
+
 ## License
 
 MIT, see [LICENSE](https://github.com/prior-lang/prior/blob/main/LICENSE). Use it, fork it, build your own runner on the open interchange format.

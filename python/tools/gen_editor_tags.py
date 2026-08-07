@@ -63,6 +63,7 @@ DESCRIPTIONS: dict[str, tuple[str, str]] = {
     "max_position": ("Cap any single position at this % of the portfolio.", "risk [max_position 20%]"),
     "daily_loss": ("Halt new entries after losing this many dollars in a day.", "risk [daily_loss $500]"),
     "cooldown": ("After an exit, ignore new entry signals for N bars.", "risk [cooldown 5]"),
+    "after_losses": ("Enter only after N consecutive losing trades. The streak is counted on a shadow book that takes every signal, including trades this gate declines.", "risk [after_losses 2]"),
     "reverse": ("Stop-and-reverse: an opposite-direction entry signal flips the position instead of standing aside. Needs both long and short rules.", "risk [reverse]"),
     "contracts": ("Options position size: number of contracts per trade.", "risk [contracts 2]"),
     "collateral": ("Options cash-secured-put collateral cap as % of portfolio.", "risk [collateral 30%]"),

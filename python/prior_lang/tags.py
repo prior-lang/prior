@@ -377,6 +377,15 @@ _register(TagSpec(
     positional=[_p("bars", NUMBER, required=True)],
 ))
 _register(TagSpec(
+    # Enter only after N consecutive losing trades. The streak is counted
+    # on a SHADOW BOOK that takes every signal the strategy generates,
+    # including the ones this gate declines — otherwise the gate would
+    # feed back into its own input. Yesterday's fill is realized
+    # information, so conditioning on it carries no lookahead.
+    name="after_losses", kind="risk", usage="n/a",
+    positional=[_p("count", NUMBER, required=True)],
+))
+_register(TagSpec(
     name="contracts", kind="risk", usage="n/a",
     positional=[_p("count", NUMBER, required=True)],
 ))

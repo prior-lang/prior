@@ -280,6 +280,8 @@ class Program:
                 risk["daily_loss_limit_usd"] = t.params["value"]
             elif t.name == "cooldown":
                 risk["cooldown_bars"] = int(t.params["bars"])
+            elif t.name == "after_losses":
+                risk["after_losses"] = int(t.params["count"])
             elif t.name == "reverse":
                 risk["reverse"] = True
 
@@ -1314,8 +1316,11 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
             tag = _parse_tag(cur)
             if tag.name not in ("__pct_portfolio__", "__dollar__", "risk"):
                 kindname = tag.spec.kind if tag.spec else "unknown"
+                hint = (f"risk tags live on their own line: risk [{tag.name} ...]"
+                        if tag.spec is not None and tag.spec.kind == "risk"
+                        else f"e.g. {buy.value} [10% portfolio]")
                 cur.err(f"[{tag.name}] is a {kindname} tag; {buy.value} takes a sizing tag", tok=buy,
-                        suggestion=f"e.g. {buy.value} [10% portfolio]")
+                        suggestion=hint)
             if not cur.at_end():
                 cur.err("nothing may follow the sizing tag on the entry rule")
             prog.rules.append({"logic": rule_logic, "terms": rule_terms, "sizing": tag,
@@ -1549,6 +1554,20 @@ def _check_condition_timeframes(prog: Program, conditions: list) -> None:
 
 
 def _validate(prog: Program):
+    for t in prog.risk_tags:
+        if t.name == "after_losses":
+            if prog.opt_form is not None:
+                raise PriorError(
+                    "[after_losses N] gates stock entries on realized trade outcomes — "
+                    "premium programs (write/wheel) don't support it yet"
+                )
+            if prog.rank_select is not None:
+                raise PriorError(
+                    "[after_losses N] gates trade entries — ranking strategies rebalance "
+                    "holdings and have no per-trade outcomes to count"
+                )
+            if int(t.params["count"]) < 1:
+                raise PriorError("[after_losses N] needs N of at least 1")
     if prog.opt_form is not None:
         if prog.rules or prog.exit_terms or prog.exit_short_terms or prog.partial_terms or prog.rank_select:
             raise PriorError(

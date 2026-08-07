@@ -376,6 +376,13 @@
             "null"
           ],
           "minimum": 1
+        },
+        "after_losses": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
         }
       },
       "additionalProperties": false
