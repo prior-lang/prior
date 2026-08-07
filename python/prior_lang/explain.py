@@ -82,6 +82,14 @@ def _condition_text_inner(cond: dict) -> str:
             f"price touches or crosses the {p.get('band', 'upper')} Bollinger band "
             f"({_num(p.get('period', 20))}-period, {_plural(p.get('num_std', 2.0), 'standard deviation')})"
         )
+    if "_fractal_" in name:
+        side = {"price_above": "is above", "price_below": "is below",
+                "price_crosses_above": "crosses above",
+                "price_crosses_below": "crosses below"}[name.rsplit("_fractal_", 1)[0]]
+        kind_ = "fractal high" if name.endswith("high") else "fractal low"
+        w = _num(p.get("wing", 2))
+        return (f"price {side} the most recent confirmed {kind_} "
+                f"(wing {w}, revealed {w} bars after it forms)")
     if name in ("price_above_sma", "price_below_sma", "price_above_ema", "price_below_ema"):
         side = "above" if "above" in name else "below"
         ma = name[-3:].upper()

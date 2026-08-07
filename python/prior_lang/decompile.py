@@ -90,6 +90,13 @@ def _condition_to_term_inner(cond: dict):
             named["std"] = ("number", _n(p["num_std"]))
         return Comparison(("price",), "at", _tag(f"{band}_bollinger", pos, named))
 
+    if "_fractal_" in name:
+        cmpmap = {"price_above": "above", "price_below": "below",
+                  "price_crosses_above": "crosses_above",
+                  "price_crosses_below": "crosses_below"}
+        side = cmpmap[name.rsplit("_fractal_", 1)[0]]
+        frac = "fractal_high" if name.endswith("high") else "fractal_low"
+        return Comparison(("price",), side, _tag(frac, [("number", _n(p.get("wing", 2)))]))
     if name in ("price_above_sma", "price_below_sma", "price_above_ema", "price_below_ema"):
         side = "above" if "above" in name else "below"
         ma = name[-3:]

@@ -317,6 +317,38 @@
       "params": []
     },
     {
+      "name": "fractal_high",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": false,
+      "description": "T",
+      "example": "h",
+      "params": [
+        {
+          "name": "wing",
+          "kind": "number",
+          "default": 2,
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "fractal_low",
+      "kind": "condition",
+      "usage": "operand",
+      "cloudOnly": false,
+      "description": "T",
+      "example": "h",
+      "params": [
+        {
+          "name": "wing",
+          "kind": "number",
+          "default": 2,
+          "required": false
+        }
+      ]
+    },
+    {
       "name": "gap_down",
       "kind": "condition",
       "usage": "predicate",

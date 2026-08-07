@@ -108,6 +108,7 @@ Use bare: `when [macd_cross_up]`. Compiles to `macd_crosses_above_signal` / `mac
 | Tag / form | Kind | Params (defaults) | Compiles to |
 |---|---|---|---|
 | `[new_high]` / `[new_low]` | predicate | period (252) | `price_new_high` / `price_new_low` — close at/beyond the highest/lowest close of the prior N bars |
+| `[fractal_high]` / `[fractal_low]` | operand | wing (2) | the most recent CONFIRMED fractal extreme as a price level: a bar whose high (low) strictly beats the `wing` bars on each side. The level is revealed `wing` bars after the bar that made it and holds until the next confirmed fractal. Compared with above/below/crosses above/crosses below. Marking a fractal on its own bar is lookahead; the reveal delay is enforced in the emitter |
 | `[sweep]` / `[sweep_high]` | predicate | period (20) | `sweep_low` / `sweep_high` — the bar takes out the prior N-bar low/high intrabar and closes back through it: the stop run and reclaim (or rejection) in one tag |
 | `[gap_up 2%]` / `[gap_down 2%]` | predicate | gap (2%) | `gap_up` / `gap_down` — open at least N% above/below the prior close |
 | `[up_days 3]` / `[down_days 3]` | predicate | count (required) | `up_days` / `down_days` — N consecutive higher/lower closes |

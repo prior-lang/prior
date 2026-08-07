@@ -132,6 +132,42 @@ def _hcode(condition: Dict[str, Any], uid: str = "") -> str:
         }[ctype]
         return _supertrend_code(n, mult, final)
 
+    if ctype.endswith("_fractal_high") or ctype.endswith("_fractal_low"):
+        # The level series at bar t may only use bars <= t. A fractal at
+        # bar k needs the `wing` bars AFTER k to exist, so its value is
+        # revealed at k+wing: the centered rolling extreme is computed,
+        # then shifted forward by the wing before the forward fill. The
+        # newest bar the value at t can reach is (t-wing)+wing = t.
+        w = int(p.get("wing", 2))
+        # STRICT local extreme: the bar must beat both wings outright.
+        # With ties allowed, a flat stretch makes every bar a "fractal"
+        # and the forward fill washes out the real one. The right wing
+        # reads bars after k internally, which is why the value is only
+        # exposed after .shift(wing): the newest bar the revealed value
+        # at t can reach is (t - wing) + wing = t.
+        if ctype.endswith("_fractal_high"):
+            setup = (
+                f"_fsrc = df['high']\n"
+                f"    _fl = _fsrc.shift(1).rolling({w}, min_periods={w}).max()\n"
+                f"    _fr = _fsrc.shift(-{w}).rolling({w}, min_periods={w}).max()\n"
+                f"    flevel = _fsrc.where((_fsrc > _fl) & (_fsrc > _fr)).shift({w}).ffill()"
+            )
+        else:
+            setup = (
+                f"_fsrc = df['low']\n"
+                f"    _fl = _fsrc.shift(1).rolling({w}, min_periods={w}).min()\n"
+                f"    _fr = _fsrc.shift(-{w}).rolling({w}, min_periods={w}).min()\n"
+                f"    flevel = _fsrc.where((_fsrc < _fl) & (_fsrc < _fr)).shift({w}).ffill()"
+            )
+        exprs = {
+            "price_above": "(close > flevel).fillna(False)",
+            "price_below": "(close < flevel).fillna(False)",
+            "price_crosses_above": "((close > flevel) & (close.shift(1) <= flevel.shift(1))).fillna(False)",
+            "price_crosses_below": "((close < flevel) & (close.shift(1) >= flevel.shift(1))).fillna(False)",
+        }
+        which = ctype.rsplit("_fractal_", 1)[0]
+        return f"{setup}\n    cond = {exprs[which]}"
+
     if ctype == "price_above_ema":
         n = int(p["period"])
         return (

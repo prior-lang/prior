@@ -556,6 +556,20 @@ def _desugar_inner(term) -> dict:
                     "multiplier": float(right.params["multiplier"]),
                 },
             }
+        if right.name in ("fractal_high", "fractal_low"):
+            table = {"above": f"price_above_{right.name}",
+                     "below": f"price_below_{right.name}",
+                     "crosses_above": f"price_crosses_above_{right.name}",
+                     "crosses_below": f"price_crosses_below_{right.name}"}
+            name = table.get(cmp)
+            if name is None:
+                raise PriorError(
+                    f"price compares to [{right.name}] with above, below, "
+                    f"crosses above, or crosses below, not '{_cmp_text(cmp)}'",
+                    line=term.line,
+                    suggestion=f"price crosses above [{right.name}]")
+            return {"condition": name,
+                    "params": {"wing": int(right.params["wing"])}}
         _right_spec = getattr(right, "spec", None)
         if _right_spec is not None and _right_spec.usage == "predicate":
             raise PriorError(

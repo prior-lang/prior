@@ -209,6 +209,17 @@ _register(TagSpec(
     positional=[_p("period", NUMBER, 10), _p("multiplier", NUMBER, 3.0)],
     named={"period": _p("period", NUMBER, 10), "multiplier": _p("multiplier", NUMBER, 3.0)},
 ))
+for frac in ("fractal_high", "fractal_low"):
+    _register(TagSpec(
+        # A fractal does not EXIST until its confirmation wing has
+        # closed: the level is revealed `wing` bars after the bar that
+        # made it, and the emitter enforces exactly that delay. Marking
+        # a fractal on its own bar is the accidental lookahead this tag
+        # was built to make unwritable.
+        name=frac, kind="condition", usage="operand",
+        positional=[_p("wing", NUMBER, 2)],
+        named={"wing": _p("wing", NUMBER, 2)},
+    ))
 
 # ── Hosted-data condition tags ─────────────────────────────────────
 # These parse, validate, format, and explain everywhere. Evaluation needs
