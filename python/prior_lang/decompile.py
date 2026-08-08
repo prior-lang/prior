@@ -401,7 +401,13 @@ def _strategy_to_source_body(strategy: dict) -> str:
             prog.opt_params = {"delta": _n(opt.get("delta", 25)), "dte": _n(opt.get("dte", 45))}
         else:
             otype = opt["type"]
-            d_delta = 20 if otype in ("iron_condor", "strangle") else 25
+            prog.opt_side = opt.get("side", "short")
+            if otype in ("iron_condor", "strangle"):
+                d_delta = 20
+            elif otype in ("call", "put"):
+                d_delta = 30
+            else:
+                d_delta = 25
             named = {}
             params = {}
             if otype != "straddle":

@@ -125,6 +125,7 @@ class Program:
     opt_form: str | None = None          # "wheel" | "rules" (None = not an options strategy)
     opt_params: dict = field(default_factory=dict)       # wheel: {delta, dte}
     opt_option: TagNode | None = None    # write-rule option tag (csp / covered_call)
+    opt_side: str = "short"              # "short" (write) | "long" (buy)
     opt_entry_logic: str = "all"
     opt_entry_terms: list = field(default_factory=list)  # wheel where / write-rule when
     mgmt_close_terms: list = field(default_factory=list)
@@ -178,11 +179,18 @@ class Program:
                 p = self.opt_option.params
                 option = {"type": oname}
                 if oname != "straddle":
-                    default_delta = 20 if oname in ("iron_condor", "strangle") else 25
+                    if oname in ("iron_condor", "strangle"):
+                        default_delta = 20
+                    elif oname in ("call", "put"):
+                        default_delta = 30
+                    else:
+                        default_delta = 25
                     option["delta"] = float(p.get("delta", default_delta))
                 if oname in ("put_spread", "call_spread", "iron_condor", "jade_lizard"):
                     option["width"] = float(p.get("width", 5))
                 option["dte"] = int(p.get("dte", 45))
+                if self.opt_side == "long":
+                    option["side"] = "long"
             out = {
                 "version": VERSION,
                 "name": self.name,
@@ -1326,6 +1334,10 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
                     cur.err(f"write takes an option tag, not [{otag.name}]", tok=buy,
                             suggestion="write [csp delta=25 dte=45], [put_spread delta=25 width=5 dte=30], "
                                        "[iron_condor ...], [jade_lizard ...], [straddle ...], [strangle ...]")
+                if otag.name in ("call", "put"):
+                    cur.err(f"[{otag.name}] is bought, not written — a naked short {otag.name} has "
+                            "undefined risk the runner will not model", tok=buy,
+                            suggestion=f"buy [{otag.name} delta=30 dte=45], or write [csp] / [covered_call] for premium")
                 if otag.name in ("put_spread", "call_spread", "iron_condor", "jade_lizard"):
                     if float(otag.params.get("width", 5)) <= 0:
                         cur.err("width is the wing distance in strike points — it must be positive", tok=buy)
@@ -1348,6 +1360,30 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
                 cur.err(f"{buy.value} needs a sizing tag", tok=buy,
                         suggestion=f"e.g. {buy.value} [10% portfolio], {buy.value} [$10000], {buy.value} [risk 1%]")
             tag = _parse_tag(cur)
+            if tag.spec is not None and tag.spec.kind == "option":
+                if buy.value == "short":
+                    cur.err("short is for stock — option structures are bought with buy or sold with write",
+                            tok=buy, suggestion=f"buy [{tag.name} ...] or write [csp ...]")
+                if prog.opt_form is not None:
+                    cur.err("one option rule (or one wheel) per strategy for now", tok=buy)
+                LONGABLE = ("call", "put", "call_spread", "put_spread", "straddle", "strangle")
+                if tag.name not in LONGABLE:
+                    cur.err(f"[{tag.name}] is a premium structure — it is written, not bought", tok=buy,
+                            suggestion="buy [call], [put], [call_spread], [put_spread], [straddle], or [strangle]; "
+                                       f"write [{tag.name} ...] to sell it")
+                if tag.name in ("put_spread", "call_spread"):
+                    if float(tag.params.get("width", 5)) <= 0:
+                        cur.err("width is the wing distance in strike points — it must be positive", tok=buy)
+                prog.opt_form = "rules"
+                prog.opt_option = tag
+                prog.opt_side = "long"
+                prog.opt_entry_logic = rule_logic
+                prog.opt_entry_terms = rule_terms
+                if not cur.at_end():
+                    cur.err("nothing may follow the option tag on the entry rule")
+                seen.add("when")
+                seen.add("if")
+                continue
             if tag.name not in ("__pct_portfolio__", "__dollar__", "risk"):
                 kindname = tag.spec.kind if tag.spec else "unknown"
                 hint = (f"risk tags live on their own line: risk [{tag.name} ...]"

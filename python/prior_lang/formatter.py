@@ -131,7 +131,8 @@ def format_program(prog: Program, include_comments: bool = True) -> str:
         else:
             joiner = " and " if prog.opt_entry_logic == "all" else " or "
             entry = "when " + joiner.join(_term(t) for t in prog.opt_entry_terms)
-            entry += f"\n  write {_tag(prog.opt_option)}"
+            verb = "buy" if getattr(prog, "opt_side", "short") == "long" else "write"
+            entry += f"\n  {verb} {_tag(prog.opt_option)}"
             blocks.append(com("when", entry))
         if prog.mgmt_close_terms:
             lines = [f"close at {_tag(prog.mgmt_close_terms[0])}"]

@@ -158,6 +158,30 @@
       ]
     },
     {
+      "name": "call",
+      "kind": "option",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "A long call, bought with the buy verb. delta picks the contract; profit/loss percentages read against the debit paid.",
+      "example": "buy [call delta=30 dte=45]",
+      "params": [
+        {
+          "name": "delta",
+          "kind": "number",
+          "default": 30,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "dte",
+          "kind": "number",
+          "default": 45,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
       "name": "call_spread",
       "kind": "option",
       "usage": "n/a",
@@ -855,6 +879,30 @@
           "kind": "percent",
           "default": null,
           "required": true
+        }
+      ]
+    },
+    {
+      "name": "put",
+      "kind": "option",
+      "usage": "n/a",
+      "cloudOnly": false,
+      "description": "A long put, bought with the buy verb. delta picks the contract; profit/loss percentages read against the debit paid.",
+      "example": "buy [put delta=30 dte=45]",
+      "params": [
+        {
+          "name": "delta",
+          "kind": "number",
+          "default": 30,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "dte",
+          "kind": "number",
+          "default": 45,
+          "required": false,
+          "named": true
         }
       ]
     },

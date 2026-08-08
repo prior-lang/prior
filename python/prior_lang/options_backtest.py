@@ -201,10 +201,22 @@ def run_options_backtest(strategy: dict, df, chains, contract_fee: float = 0.0,
     }
 
 
-def _requirement(legs, entry_px, mult) -> float | None:
-    """Collateral proxy for one open position. None = undefined risk."""
+def _requirement(legs, entry_px, mult, entry_net: float = 0.0) -> float | None:
+    """Collateral proxy for one open position. None = undefined risk.
+
+    `entry_net` is the position's net open premium per share, short-
+    positive: a credit structure opens positive, a debit structure
+    negative. For net-debit positions with no uncovered short leg, the
+    debit paid IS the max loss and therefore the capital base — an
+    all-long position is not free, it costs exactly what it can lose."""
     shorts = [l for l in legs if l["side"] == "short"]
     longs = [l for l in legs if l["side"] == "long"]
+    if entry_net < 0:
+        for s in shorts:
+            covered = any(w["right"] == s["right"] for w in longs)
+            if not covered:
+                return None
+        return -entry_net * mult
     if not shorts:
         return 0.0
     if not longs:
@@ -231,6 +243,7 @@ def _mark_daily(pd, df, chains, orders, mult, is_structure, fee_per_fill: float 
     shares = 0
     open_legs: list = []
     entry_px = 0.0
+    open_net = 0.0
     capital = 0.0
     undefined_risk = False
     by_date: dict = {}
@@ -248,17 +261,22 @@ def _mark_daily(pd, df, chains, orders, mult, is_structure, fee_per_fill: float 
             if a in ("open", "roll_open", "sell_put", "sell_call"):
                 realized += (o["price"] if side == "short" else -o["price"]) * mult - fee_per_fill
                 open_legs.append(leg)
+                open_net += o["price"] if side == "short" else -o["price"]
                 entry_px = px
             elif a in ("close", "roll_close"):
                 realized -= (o["price"] if side == "short" else -o["price"]) * mult + fee_per_fill
                 open_legs = [l for l in open_legs
                              if not (l["strike"] == leg["strike"] and l["right"] == leg["right"]
                                      and l["side"] == side)]
+                if not open_legs:
+                    open_net = 0.0
             elif a == "settle":
                 realized -= (o["price"] if side == "short" else -o["price"]) * mult
                 open_legs = []
+                open_net = 0.0
             elif a == "expired":
                 open_legs = []
+                open_net = 0.0
             elif a == "assigned":
                 realized -= leg["strike"] * mult
                 shares += int(mult)
@@ -271,7 +289,7 @@ def _mark_daily(pd, df, chains, orders, mult, is_structure, fee_per_fill: float 
                 realized += o["price"] * mult
                 shares -= int(mult)
         if open_legs:
-            req = _requirement(open_legs, entry_px, mult)
+            req = _requirement(open_legs, entry_px, mult, open_net)
             if req is None:
                 undefined_risk = True
             else:

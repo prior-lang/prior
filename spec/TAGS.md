@@ -210,10 +210,14 @@ Evaluation is bar-close (SPEC §6); precedence within a bar: stop → breakeven 
 | `[jade_lizard delta=25 width=5 dte=45]` | option | delta (25), width (5), dte (45) | short put + short call + long call `width` points above it; no upside risk once the credit exceeds the width, naked-put downside |
 | `[straddle dte=30]` | option | dte (45) | short the at-the-money put and call; undefined risk |
 | `[strangle delta=20 dte=45]` | option | delta (20), dte (45) | short the delta put and call; undefined risk |
+| `[call delta=30 dte=45]` | option | delta (30), dte (45) | a long call, **bought with the `buy` verb**; management percentages read against the debit paid, and the debit is the capital base |
+| `[put delta=30 dte=45]` | option | delta (30), dte (45) | a long put, bought with `buy`; same debit accounting |
 | `[profit 50%]` | management | percent of credit | close when half the credit is captured |
 | `[loss 200%]` | management | percent of credit | close when the loss reaches 2x the credit |
 | `[dte 21]` | management | days | close (in `close at`) or roll (in `roll at`) at N days to expiry |
 | `[contracts 1]` / `[collateral 50%]` | risk | count / percent | option position sizing |
+
+**The verb picks the side (v0.17).** `write [put_spread ...]` sells the structure for a credit (the v0.7 behavior, unchanged); `buy [put_spread ...]` buys it for a debit. Buyable: `[call]`, `[put]`, `[call_spread]`, `[put_spread]`, `[straddle]`, `[strangle]`. A bought vertical goes long the target-delta leg and sells its wing further out. `[profit N%]` on a bought position means the position gained N% on the debit; `[loss N%]` means it lost N% of the debit. Premium structures (`[csp]`, `[covered_call]`, `[iron_condor]`, `[jade_lizard]`) are written, never bought, and naked single-leg writes are refused (undefined risk the runner will not model).
 
 ---
 

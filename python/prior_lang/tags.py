@@ -296,6 +296,15 @@ _register(TagSpec(
 
 # ── Option tags (write [csp ...] / write [covered_call ...]) ───────
 
+for single in ("call", "put"):
+    _register(TagSpec(
+        # Long single legs: bought with the `buy` verb, never written.
+        # delta picks the contract (30 = a directional but affordable
+        # strike); management percentages read against the DEBIT paid.
+        name=single, kind="option", usage="n/a",
+        named={"delta": _p("delta", NUMBER, 30), "dte": _p("dte", NUMBER, 45)},
+    ))
+
 _register(TagSpec(
     name="csp", kind="option", usage="n/a",
     named={"delta": _p("delta", NUMBER, 25), "dte": _p("dte", NUMBER, 45)},

@@ -1,0 +1,18 @@
+# Directional conviction, defined risk, no premium sold. When the tape
+# breaks out with volume, buy the 30 delta call spread instead of
+# chasing shares: the debit is the whole downside, the width caps the
+# upside, and the management percentages read against what you paid.
+# The verb is the side: buy takes the debit, write would sell it.
+
+strategy "Breakout Debit Spread"
+
+universe $SPY
+
+when [new_high 63] and [volume_spike 1.5x]
+  buy [call_spread delta=30 width=10 dte=45]
+
+close at [profit 100%]
+  or [loss 50%]
+  or [dte 10]
+
+risk [contracts 1]

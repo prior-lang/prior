@@ -76,6 +76,8 @@ DESCRIPTIONS: dict[str, tuple[str, str]] = {
     "relative_strength": ("N-bar return minus the equal-weight universe's N-bar return.", "hold top 3 by [relative_strength 63]"),
     "dollar_volume": ("Average close × volume — a liquidity rank.", "hold top 10 by [dollar_volume]"),
     # ── options ───────────────────────────────────────────────────
+    "call": ("A long call, bought with the buy verb. delta picks the contract; profit/loss percentages read against the debit paid.", "buy [call delta=30 dte=45]"),
+    "put": ("A long put, bought with the buy verb. delta picks the contract; profit/loss percentages read against the debit paid.", "buy [put delta=30 dte=45]"),
     "csp": ("Cash-secured put at ~`delta`, ~`dte` days out.", "write [csp delta=20 dte=30]"),
     "covered_call": ("Covered call against held shares at ~`delta`, ~`dte` days out.", "write [covered_call delta=25 dte=45]"),
     "put_spread": ("Credit put spread: sell the ~`delta` put, buy a put `width` strike points lower. Defined risk (width minus credit).", "write [put_spread delta=25 width=5 dte=30]"),

@@ -268,6 +268,37 @@ def explain_strategy(strategy: dict) -> str:
             line = (f"Run the wheel: sell the ~{delta}-delta cash-secured put ~{dte} days out; "
                     f"if assigned, sell the ~{delta}-delta covered call against the shares; "
                     "called away means back to selling puts.")
+        elif opt.get("side") == "long":
+            otype = opt.get("type")
+            width = _num(opt.get("width", 5))
+            note = ""
+            if otype == "call":
+                line = f"Buy the ~{delta}-delta call ~{dte} days out"
+                note = "Max loss is the debit paid."
+            elif otype == "put":
+                line = f"Buy the ~{delta}-delta put ~{dte} days out"
+                note = "Max loss is the debit paid."
+            elif otype == "call_spread":
+                line = (f"Buy the ~{delta}-delta call and sell a call {width} points higher "
+                        f"(~{dte} days out)")
+                note = "A debit call spread: max loss is the debit paid, upside capped at the width."
+            elif otype == "put_spread":
+                line = (f"Buy the ~{delta}-delta put and sell a put {width} points lower "
+                        f"(~{dte} days out)")
+                note = "A debit put spread: max loss is the debit paid, downside profit capped at the width."
+            elif otype == "straddle":
+                line = f"Buy the at-the-money straddle ~{dte} days out"
+                note = "Long volatility: max loss is the debit paid; needs a move either way."
+            else:
+                line = f"Buy the ~{delta}-delta strangle ~{dte} days out"
+                note = "Long volatility: max loss is the debit paid; needs a move either way."
+            conds = (options.get("entry") or {}).get("conditions") or []
+            if conds:
+                joiner = " and " if (options.get("entry") or {}).get("match_logic", "all") == "all" else " or "
+                line += " when " + joiner.join(_condition_text(c) for c in conds)
+            line += "."
+            if note:
+                line += " " + note
         else:
             otype = opt.get("type")
             width = _num(opt.get("width", 5))
@@ -311,10 +342,13 @@ def explain_strategy(strategy: dict) -> str:
                 line += " " + note
         lines.append(line)
         bits = []
+        basis = "debit" if opt.get("side") == "long" else "credit"
         if mgmt.get("profit_pct") is not None:
-            bits.append(f"close at {_num(mgmt['profit_pct'])}% of the credit captured")
+            bits.append(f"close at {_num(mgmt['profit_pct'])}% "
+                        + (f"gain on the {basis} paid" if basis == "debit"
+                           else "of the credit captured"))
         if mgmt.get("loss_pct") is not None:
-            bits.append(f"close if the loss reaches {_num(mgmt['loss_pct'])}% of the credit")
+            bits.append(f"close if the loss reaches {_num(mgmt['loss_pct'])}% of the {basis}")
         if mgmt.get("close_dte") is not None:
             bits.append(f"close at {_num(mgmt['close_dte'])} DTE")
         if mgmt.get("roll_dte") is not None:
