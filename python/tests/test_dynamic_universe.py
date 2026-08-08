@@ -45,7 +45,7 @@ def test_ranking_strategy_accepts_dynamic_universe():
 
 
 def test_count_must_be_sane():
-    with pytest.raises(prior_lang.PriorError, match="between 1 and 500"):
+    with pytest.raises(prior_lang.PriorError, match="positive count"):
         prior_lang.compile_source(SRC.replace("[top_volume 5]", "[top_volume 0]"))
     with pytest.raises(prior_lang.PriorError, match="between 1 and 500"):
         prior_lang.compile_source(SRC.replace("[top_volume 5]", "[top_volume 5.5]"))

@@ -118,7 +118,7 @@ def test_refused_for_options_and_ranking_and_zero():
 
     with pytest.raises(PriorError) as e:
         compile_source(GATED.replace("[after_losses 1]", "[after_losses 0]"))
-    assert "at least 1" in str(e.value)
+    assert "positive count" in str(e.value)
 
 
 def test_sizing_line_error_points_to_the_risk_section():

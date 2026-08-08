@@ -583,11 +583,18 @@ def _cmd_trace(args) -> int:
                            "close": spread, "volume": 0.0})
         name += f" ({a}/{b} spread)"
     elif "ticker" in df.columns:
+        tickers = sorted(df["ticker"].astype(str).str.upper().unique())
         if not args.ticker:
-            raise SystemExit("multi-ticker data file — pick one instrument: --ticker NVDA")
+            shown = ", ".join(tickers[:12]) + (", ..." if len(tickers) > 12 else "")
+            raise SystemExit(
+                f"multi-ticker data file — pick one instrument with --ticker.\n"
+                f"This file has: {shown}\n"
+                f"e.g. prior trace <strategy> --data <file> --ticker {tickers[0]}"
+            )
         df = df[df["ticker"].str.upper() == args.ticker.upper()].drop(columns=["ticker"]).sort_index()
         if df.empty:
-            raise SystemExit(f"no rows for {args.ticker.upper()} in the data file")
+            shown = ", ".join(tickers[:12]) + (", ..." if len(tickers) > 12 else "")
+            raise SystemExit(f"no rows for {args.ticker.upper()} in the data file — it has: {shown}")
         name += f" — {args.ticker.upper()}"
 
     report = trace_report(strategy, df, date=args.date, last=args.last)

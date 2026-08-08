@@ -963,13 +963,30 @@ def _resolve_params(cur: _Cursor, name_tok: Token, spec: TagSpec, pos_raw, named
             cur.err(f"[{spec.name}] counts days: [{spec.name} 7 days]", tok=name_tok)
     if spec.name == "breakeven" and params.get("word") != "after":
         cur.err("[breakeven] reads: [breakeven after 2%]", tok=name_tok)
+    if spec.name == "heavy_volume" and params.get("top") != "top":
+        cur.err("[heavy_volume] reads: [heavy_volume top 10%]", tok=name_tok)
+    # A zero or negative window compiles into a rule that is never true —
+    # the silently dead rule the activity table exists to catch, refused
+    # here instead of discovered there.
+    for pname in ("period", "lookback", "wing", "count"):
+        v = params.get(pname)
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and v <= 0:
+            cur.err(f"[{spec.name}] needs a positive {pname}", tok=name_tok)
     return params
 
 
 def _kind_example(kind: str, value) -> str:
-    return {"number": f"number {value:g}", "percent": f"percent {value:g}%",
-            "dollar": f"dollar ${value:g}", "mult": f"multiplier {value:g}x",
-            "word": f"word '{value}'"}.get(kind, kind)
+    # Build only the branch that matches: an eager dict of f-strings
+    # formats every branch, and "{value:g}" on a word crashes the error
+    # message that was trying to explain the mismatch.
+    if kind == "word":
+        return f"word '{value}'"
+    try:
+        v = f"{float(value):g}"
+    except (TypeError, ValueError):
+        return kind
+    return {"number": f"number {v}", "percent": f"percent {v}%",
+            "dollar": f"dollar ${v}", "mult": f"multiplier {v}x"}.get(kind, kind)
 
 
 def _kind_suggestion(tag: str, p) -> str:
