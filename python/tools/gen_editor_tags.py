@@ -63,6 +63,8 @@ DESCRIPTIONS: dict[str, tuple[str, str]] = {
     "max_position": ("Cap any single position at this % of the portfolio.", "risk [max_position 20%]"),
     "daily_loss": ("Halt new entries after losing this many dollars in a day.", "risk [daily_loss $500]"),
     "cooldown": ("After an exit, ignore new entry signals for N bars.", "risk [cooldown 5]"),
+    "bullish_divergence": ("Price makes a lower confirmed fractal low while RSI makes a higher low. Pivots must be confirmed (wing closed) before they count, so the repainting divergence is unwritable.", "when [bullish_divergence rsi 2]"),
+    "bearish_divergence": ("Price makes a higher confirmed fractal high while RSI makes a lower high. Pivots must be confirmed (wing closed) before they count.", "sell when [bearish_divergence rsi 2]"),
     "after_losses": ("Enter only after N consecutive losing trades. The streak is counted on a shadow book that takes every signal, including trades this gate declines.", "risk [after_losses 2]"),
     "reverse": ("Stop-and-reverse: an opposite-direction entry signal flips the position instead of standing aside. Needs both long and short rules.", "risk [reverse]"),
     "contracts": ("Options position size: number of contracts per trade.", "risk [contracts 2]"),

@@ -160,6 +160,17 @@ def _condition_to_term_inner(cond: dict):
             pos.append(("number", _n(p["period"])))
         return Predicate(_tag(surface, pos))
 
+    if name in ("bullish_divergence", "bearish_divergence"):
+        pos = [("word", str(p.get("indicator", "rsi")))]
+        if _n(p.get("wing", 2)) != 2:
+            pos.append(("number", _n(p["wing"])))
+        named = {}
+        if _n(p.get("within", 60)) != 60:
+            named["within"] = ("number", _n(p["within"]))
+        if _n(p.get("period", 14)) != 14:
+            named["period"] = ("number", _n(p["period"]))
+        return Predicate(_tag(name, pos, named))
+
     if name in ("gap_up", "gap_down"):
         pos = []
         if _n(p.get("min_gap_pct", 2.0)) != 2.0:

@@ -55,6 +55,42 @@
       ]
     },
     {
+      "name": "bearish_divergence",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Price makes a higher confirmed fractal high while RSI makes a lower high. Pivots must be confirmed (wing closed) before they count.",
+      "example": "sell when [bearish_divergence rsi 2]",
+      "params": [
+        {
+          "name": "indicator",
+          "kind": "word",
+          "default": "rsi",
+          "required": false
+        },
+        {
+          "name": "wing",
+          "kind": "number",
+          "default": 2,
+          "required": false
+        },
+        {
+          "name": "within",
+          "kind": "number",
+          "default": 60,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 14,
+          "required": false,
+          "named": true
+        }
+      ]
+    },
+    {
       "name": "big_banks",
       "kind": "universe",
       "usage": "n/a",
@@ -82,6 +118,42 @@
           "kind": "percent",
           "default": null,
           "required": true
+        }
+      ]
+    },
+    {
+      "name": "bullish_divergence",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Price makes a lower confirmed fractal low while RSI makes a higher low. Pivots must be confirmed (wing closed) before they count, so the repainting divergence is unwritable.",
+      "example": "when [bullish_divergence rsi 2]",
+      "params": [
+        {
+          "name": "indicator",
+          "kind": "word",
+          "default": "rsi",
+          "required": false
+        },
+        {
+          "name": "wing",
+          "kind": "number",
+          "default": 2,
+          "required": false
+        },
+        {
+          "name": "within",
+          "kind": "number",
+          "default": 60,
+          "required": false,
+          "named": true
+        },
+        {
+          "name": "period",
+          "kind": "number",
+          "default": 14,
+          "required": false,
+          "named": true
         }
       ]
     },

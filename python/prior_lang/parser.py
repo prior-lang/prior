@@ -32,6 +32,8 @@ _PREDICATE_MAP = {
     "new_low": "price_new_low",
     "sweep": "sweep_low",
     "sweep_high": "sweep_high",
+    "bullish_divergence": "bullish_divergence",
+    "bearish_divergence": "bearish_divergence",
     "gap_up": "gap_up",
     "gap_down": "gap_down",
     "up_days": "up_days",
@@ -499,6 +501,21 @@ def _desugar_inner(term) -> dict:
             return {"condition": name, "params": {"period": int(p["period"])}}
         if tag.name in ("earnings_within", "no_earnings_within"):
             return {"condition": name, "params": {"days": int(p["days"])}}
+        if tag.name in ("bullish_divergence", "bearish_divergence"):
+            ind = str(p["indicator"]).lower()
+            if ind != "rsi":
+                raise PriorError(
+                    f"[{tag.name}] measures rsi divergence for now — other "
+                    "oscillators need their own pivot semantics first",
+                    line=tag.line,
+                    suggestion=f"[{tag.name} rsi {int(p['wing'])}]",
+                )
+            if int(p["wing"]) < 1:
+                raise PriorError(f"[{tag.name}] needs a wing of at least 1", line=tag.line)
+            return {"condition": name, "params": {
+                "indicator": ind, "wing": int(p["wing"]),
+                "within": int(p["within"]), "period": int(p["period"]),
+            }}
         # MACD crosses
         return {"condition": name, "params": {"fast": int(p["fast"]), "slow": int(p["slow"]), "signal": int(p["signal"])}}
 

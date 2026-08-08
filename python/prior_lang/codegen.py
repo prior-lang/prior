@@ -101,6 +101,47 @@ def _hcode(condition: Dict[str, Any], uid: str = "") -> str:
             f"    cond = ((df['high'] > prior_max) & (close < prior_max)).fillna(False)"
         )
 
+    if ctype in ("bullish_divergence", "bearish_divergence"):
+        # Divergence between price and RSI, measured at CONFIRMED fractal
+        # pivots (same strict construction and reveal delay as the
+        # fractal tags). The two most recent confirmed pivots are
+        # compared: bullish = price lower low + indicator higher low;
+        # bearish mirrors on highs. The indicator is read AT the pivot
+        # bar but only once the pivot's wing has closed, so the
+        # condition changes value exactly at reveal bars — a divergence
+        # drawn through an unconfirmed pivot (the classic repaint) is
+        # unrepresentable. Pivots further apart than `within` bars are
+        # not a divergence, just two unrelated swings.
+        w = int(p.get("wing", 2))
+        n = int(p.get("period", 14))
+        within = int(p.get("within", 60))
+        if ctype == "bullish_divergence":
+            src_col, roll, pcmp, icmp = "df['low']", "min", "<", ">"
+        else:
+            src_col, roll, pcmp, icmp = "df['high']", "max", ">", "<"
+        return (
+            f"delta = close.diff()\n"
+            f"    gain = delta.clip(lower=0).rolling({n}, min_periods={n}).mean()\n"
+            f"    loss = (-delta.clip(upper=0)).rolling({n}, min_periods={n}).mean()\n"
+            f"    rs = gain / loss.replace(0, np.nan)\n"
+            f"    rsi = 100 - (100 / (1 + rs))\n"
+            f"    _dsrc = {src_col}\n"
+            f"    _dl = _dsrc.shift(1).rolling({w}, min_periods={w}).{roll}()\n"
+            f"    _dr = _dsrc.shift(-{w}).rolling({w}, min_periods={w}).{roll}()\n"
+            f"    _dpiv = (_dsrc {pcmp} _dl) & (_dsrc {pcmp} _dr)\n"
+            f"    _dp = _dsrc.where(_dpiv).shift({w})\n"
+            f"    _di = rsi.where(_dpiv).shift({w})\n"
+            f"    _dpos = pd.Series(np.arange(len(df), dtype=float), index=df.index)"
+            f".where(_dpiv).shift({w})\n"
+            f"    _dm = _dp.notna() & _di.notna()\n"
+            f"    _evp = _dp[_dm]\n"
+            f"    _evi = _di[_dm]\n"
+            f"    _evx = _dpos[_dm]\n"
+            f"    _div = ((_evp {pcmp} _evp.shift(1)) & (_evi {icmp} _evi.shift(1))"
+            f" & ((_evx - _evx.shift(1)) <= {within}))\n"
+            f"    cond = _div.reindex(df.index).ffill().fillna(False).astype(bool)"
+        )
+
     if ctype == "sequence":
         # `A then within N bars B`. The window is counted BACKWARDS from the
         # current bar ("did A arm in the last N bars"), never forwards from the

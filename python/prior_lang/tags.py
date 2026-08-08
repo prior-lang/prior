@@ -221,6 +221,24 @@ for frac in ("fractal_high", "fractal_low"):
         named={"wing": _p("wing", NUMBER, 2)},
     ))
 
+for dv in ("bullish_divergence", "bearish_divergence"):
+    _register(TagSpec(
+        # Divergence between price and an oscillator, measured at
+        # CONFIRMED fractal pivots (same strict construction and reveal
+        # delay as the fractal tags). Bullish: the two most recent
+        # confirmed price lows make a lower low while the indicator
+        # makes a higher low. The pair is only comparable once the
+        # second pivot's wing has closed, so the condition changes value
+        # exactly at reveal bars — the classic repainting divergence
+        # (drawn through a pivot that wasn't confirmed yet) is
+        # unwritable here.
+        name=dv, kind="condition", usage="predicate",
+        positional=[_p("indicator", WORD, "rsi"), _p("wing", NUMBER, 2)],
+        named={"wing": _p("wing", NUMBER, 2),
+               "within": _p("within", NUMBER, 60),
+               "period": _p("period", NUMBER, 14)},
+    ))
+
 # ── Hosted-data condition tags ─────────────────────────────────────
 # These parse, validate, format, and explain everywhere. Evaluation needs
 # data the offline CLI does not have (chain history, earnings calendars,

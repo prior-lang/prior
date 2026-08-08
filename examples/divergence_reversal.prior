@@ -1,0 +1,20 @@
+# Divergence without the repaint. Every charting platform draws
+# divergence through pivots, and most of them draw it through pivots
+# that were not confirmed yet when the signal supposedly fired. Here a
+# pivot is a strict fractal extreme that does not exist until its wing
+# closes, so the comparison happens exactly when both pivots are real
+# knowledge and never earlier. The bearish twin works as an exit, which
+# is where divergence rules most often die silently in hand rolled
+# engines — run the backtest and read the rule activity table.
+
+strategy "Divergence Reversal"
+
+universe $SPY
+timeframe 1d
+
+when [bullish_divergence rsi 2] and price above [sma 200]
+  buy [risk 1%]
+
+sell when [bearish_divergence rsi 2]
+  or [stop 4%]
+  or [after 30 bars]

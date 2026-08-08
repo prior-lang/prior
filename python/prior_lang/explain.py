@@ -62,6 +62,20 @@ def _condition_text_inner(cond: dict) -> str:
         return (f"the bar takes out the prior {_num(n)}-bar high and closes "
                 f"back below it (a sweep and rejection)")
 
+    if name in ("bullish_divergence", "bearish_divergence"):
+        w = int(p.get("wing", 2))
+        n = int(p.get("period", 14))
+        within = int(p.get("within", 60))
+        side = "low" if name == "bullish_divergence" else "high"
+        kind = "bullish" if name == "bullish_divergence" else "bearish"
+        pdir = "lower" if kind == "bullish" else "higher"
+        idir = "higher" if kind == "bullish" else "lower"
+        return (f"a {kind} divergence: the two most recent confirmed fractal "
+                f"{side}s (wing {_num(w)}, each revealed {_num(w)} bars after "
+                f"it forms) show price making a {pdir} {side} while RSI({_num(n)}) "
+                f"makes a {idir} {side}, with the pivots no more than "
+                f"{_num(within)} bars apart")
+
     if name == "sequence":
         n = int(p.get("window", 0))
         first = _condition_text_inner(p["first"])
