@@ -435,6 +435,74 @@ def _hcode(condition: Dict[str, Any], uid: str = "") -> str:
             f"downs = (close.diff() < 0).rolling({n}, min_periods={n}).sum()\n"
             f"    cond = (downs == {n}).fillna(False)"
         )
+    # ── Candlestick patterns: pure trailing bar geometry, exact
+    # inequalities published in spec/TAGS.md. Body comparisons are
+    # body-based (open/close), never wick-based.
+    if ctype == "inside_bar":
+        return (
+            "cond = ((df['high'] < df['high'].shift(1)) & "
+            "(df['low'] > df['low'].shift(1))).fillna(False)"
+        )
+    if ctype == "outside_bar":
+        return (
+            "cond = ((df['high'] > df['high'].shift(1)) & "
+            "(df['low'] < df['low'].shift(1))).fillna(False)"
+        )
+    if ctype in ("bullish_engulfing", "bearish_engulfing"):
+        if ctype == "bullish_engulfing":
+            body = "(pc < po) & (c > o) & (o < pc) & (c > po)"
+        else:
+            body = "(pc > po) & (c < o) & (o > pc) & (c < po)"
+        return (
+            "o, c = df['open'], close\n"
+            "    po, pc = o.shift(1), c.shift(1)\n"
+            f"    cond = ({body}).fillna(False)"
+        )
+    if ctype in ("bullish_harami", "bearish_harami"):
+        if ctype == "bullish_harami":
+            body = "(pc < po) & (o > pc) & (c > pc) & (o < po) & (c < po)"
+        else:
+            body = "(pc > po) & (o < pc) & (c < pc) & (o > po) & (c > po)"
+        return (
+            "o, c = df['open'], close\n"
+            "    po, pc = o.shift(1), c.shift(1)\n"
+            f"    cond = ({body}).fillna(False)"
+        )
+    if ctype == "doji":
+        frac = float(p.get("max_body_pct", 10.0)) / 100.0
+        return (
+            "rng = df['high'] - df['low']\n"
+            "    body = (close - df['open']).abs()\n"
+            f"    cond = ((rng > 0) & (body <= rng * {frac})).fillna(False)"
+        )
+    if ctype in ("hammer", "shooting_star"):
+        if ctype == "hammer":
+            shape = "(lower >= 2 * body) & (upper <= body)"
+        else:
+            shape = "(upper >= 2 * body) & (lower <= body)"
+        return (
+            "o = df['open']\n"
+            "    body = (close - o).abs()\n"
+            "    upper = df['high'] - np.maximum(o, close)\n"
+            "    lower = np.minimum(o, close) - df['low']\n"
+            f"    cond = ((body > 0) & {shape}).fillna(False)"
+        )
+    if ctype in ("morning_star", "evening_star"):
+        if ctype == "morning_star":
+            shape = ("(c1 < o1) & (b2 < b1) & (np.maximum(o2, c2) < c1) & "
+                     "(c > o) & (c > mid1)")
+        else:
+            shape = ("(c1 > o1) & (b2 < b1) & (np.minimum(o2, c2) > c1) & "
+                     "(c < o) & (c < mid1)")
+        return (
+            "o, c = df['open'], close\n"
+            "    o1, c1 = o.shift(2), c.shift(2)\n"
+            "    o2, c2 = o.shift(1), c.shift(1)\n"
+            "    b1 = (c1 - o1).abs()\n"
+            "    b2 = (c2 - o2).abs()\n"
+            "    mid1 = (o1 + c1) / 2\n"
+            f"    cond = ({shape}).fillna(False)"
+        )
     if ctype == "price_above_level":
         lvl = float(p["level"])
         return f"cond = (close > {lvl}).fillna(False)"

@@ -1,0 +1,18 @@
+# A pattern is a shape, not a thesis. The engulfing bar says buyers
+# absorbed the prior day's selling; three lower closes before it say
+# there was selling worth absorbing. The context lives in the rule,
+# stated explicitly, never baked silently into the tag — and the exit
+# states its own pattern the same way.
+
+strategy "Engulfing After Weakness"
+
+universe [sp_top_30]
+timeframe 1d
+
+when [bullish_engulfing] and [down_days 3]
+  buy [risk 1%]
+
+sell when [evening_star]
+  or [doji 8%]
+  or [stop 6%]
+  or [after 15 bars]

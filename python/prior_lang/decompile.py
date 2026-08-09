@@ -180,6 +180,17 @@ def _condition_to_term_inner(cond: dict):
     if name in ("up_days", "down_days"):
         return Predicate(_tag(name, [("number", _n(p["count"]))]))
 
+    if name in ("inside_bar", "outside_bar", "bullish_engulfing",
+                "bearish_engulfing", "bullish_harami", "bearish_harami",
+                "hammer", "shooting_star", "morning_star", "evening_star"):
+        return Predicate(_tag(name, []))
+
+    if name == "doji":
+        pos = []
+        if _n(p.get("max_body_pct", 10.0)) != 10.0:
+            pos.append(("percent", _n(p["max_body_pct"])))
+        return Predicate(_tag(name, pos))
+
     if name in ("price_above_level", "price_below_level"):
         side = "above" if "above" in name else "below"
         return Comparison(("price",), side, ("number", _n(p["level"])))

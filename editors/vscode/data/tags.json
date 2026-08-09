@@ -91,6 +91,24 @@
       ]
     },
     {
+      "name": "bearish_engulfing",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "A red body strictly engulfs the prior green body.",
+      "example": "when [bearish_engulfing]",
+      "params": []
+    },
+    {
+      "name": "bearish_harami",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "The body sits strictly inside the prior green body.",
+      "example": "when [bearish_harami]",
+      "params": []
+    },
+    {
       "name": "big_banks",
       "kind": "universe",
       "usage": "n/a",
@@ -156,6 +174,24 @@
           "named": true
         }
       ]
+    },
+    {
+      "name": "bullish_engulfing",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "A green body strictly engulfs the prior red body.",
+      "example": "when [bullish_engulfing]",
+      "params": []
+    },
+    {
+      "name": "bullish_harami",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "The body sits strictly inside the prior red body.",
+      "example": "when [bullish_harami]",
+      "params": []
     },
     {
       "name": "call",
@@ -334,6 +370,22 @@
       ]
     },
     {
+      "name": "doji",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "The body is at most `body` percent of the bar's high-low range.",
+      "example": "when [doji 10%]",
+      "params": [
+        {
+          "name": "body",
+          "kind": "percent",
+          "default": 10.0,
+          "required": false
+        }
+      ]
+    },
+    {
       "name": "dollar_volume",
       "kind": "metric",
       "usage": "n/a",
@@ -429,6 +481,15 @@
       "params": []
     },
     {
+      "name": "evening_star",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Green bar, smaller body above its close, then a red close below the first bar's midpoint.",
+      "example": "when [evening_star]",
+      "params": []
+    },
+    {
       "name": "fractal_high",
       "kind": "condition",
       "usage": "operand",
@@ -493,6 +554,15 @@
       ]
     },
     {
+      "name": "hammer",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Lower shadow at least twice the body; upper shadow no larger than it.",
+      "example": "when [hammer]",
+      "params": []
+    },
+    {
       "name": "heavy_volume",
       "kind": "condition",
       "usage": "predicate",
@@ -520,6 +590,15 @@
           "named": true
         }
       ]
+    },
+    {
+      "name": "inside_bar",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "This bar's range sits strictly inside the prior bar's range.",
+      "example": "when [inside_bar]",
+      "params": []
     },
     {
       "name": "inverse_volatility",
@@ -797,6 +876,15 @@
       ]
     },
     {
+      "name": "morning_star",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Red bar, smaller body below its close, then a green close above the first bar's midpoint.",
+      "example": "when [morning_star]",
+      "params": []
+    },
+    {
       "name": "new_high",
       "kind": "condition",
       "usage": "predicate",
@@ -865,6 +953,15 @@
           "required": false
         }
       ]
+    },
+    {
+      "name": "outside_bar",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "This bar's range strictly engulfs the prior bar's range.",
+      "example": "when [outside_bar]",
+      "params": []
     },
     {
       "name": "profit",
@@ -1024,6 +1121,15 @@
       "cloudOnly": false,
       "description": "Prebuilt list: 14 semiconductor leaders.",
       "example": "universe [semis]",
+      "params": []
+    },
+    {
+      "name": "shooting_star",
+      "kind": "condition",
+      "usage": "predicate",
+      "cloudOnly": false,
+      "description": "Upper shadow at least twice the body; lower shadow no larger than it.",
+      "example": "when [shooting_star]",
       "params": []
     },
     {

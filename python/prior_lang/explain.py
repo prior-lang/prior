@@ -157,6 +157,35 @@ def _condition_text_inner(cond: dict) -> str:
     if name in ("up_days", "down_days"):
         d = "higher" if name == "up_days" else "lower"
         return f"the last {_plural(p.get('count'), 'close')} were each {d} than the one before"
+    if name == "inside_bar":
+        return "the bar's range sits entirely inside the prior bar's range (inside bar)"
+    if name == "outside_bar":
+        return "the bar's range engulfs the prior bar's range (outside bar)"
+    if name in ("bullish_engulfing", "bearish_engulfing"):
+        if name == "bullish_engulfing":
+            return ("a green body engulfs the prior red body "
+                    "(bullish engulfing, body-based)")
+        return ("a red body engulfs the prior green body "
+                "(bearish engulfing, body-based)")
+    if name in ("bullish_harami", "bearish_harami"):
+        prev = "red" if name == "bullish_harami" else "green"
+        return (f"the body sits entirely inside the prior {prev} body "
+                f"({name.replace('_', ' ')})")
+    if name == "doji":
+        return (f"the body is at most {_num(p.get('max_body_pct', 10))}% of "
+                "the bar's range (doji)")
+    if name in ("hammer", "shooting_star"):
+        if name == "hammer":
+            return ("the lower shadow is at least twice the body and the upper "
+                    "shadow no larger than it (hammer)")
+        return ("the upper shadow is at least twice the body and the lower "
+                "shadow no larger than it (shooting star)")
+    if name in ("morning_star", "evening_star"):
+        if name == "morning_star":
+            return ("a red bar, then a smaller body below its close, then a "
+                    "green close above the first bar's midpoint (morning star)")
+        return ("a green bar, then a smaller body above its close, then a "
+                "red close below the first bar's midpoint (evening star)")
     if name in ("price_above_level", "price_below_level"):
         side = "above" if "above" in name else "below"
         return f"price is {side} {_num(p.get('level'))}"

@@ -239,6 +239,27 @@ for dv in ("bullish_divergence", "bearish_divergence"):
                "period": _p("period", NUMBER, 14)},
     ))
 
+# ── Candlestick pattern tags ───────────────────────────────────────
+# Pure bar geometry, confirmed at the close of the pattern's LAST bar —
+# every input is this bar or earlier, so lookahead stays unwritable.
+# No trend precondition is baked in: a "reversal" pattern tag states
+# only the shape; compose with [down_days 3] etc. to supply context,
+# so a tag never smuggles in a second hypothesis. Where the classical
+# literature disagrees with itself (engulfing bodies vs wicks, doji
+# thresholds), spec/TAGS.md publishes the exact inequalities and those
+# are the definition.
+for pat in ("inside_bar", "outside_bar",
+            "bullish_engulfing", "bearish_engulfing",
+            "bullish_harami", "bearish_harami",
+            "hammer", "shooting_star",
+            "morning_star", "evening_star"):
+    _register(TagSpec(name=pat, kind="condition", usage="predicate"))
+_register(TagSpec(
+    # |close - open| at most `body`% of the bar's high-low range.
+    name="doji", kind="condition", usage="predicate",
+    positional=[_p("body", PERCENT, 10.0)],
+))
+
 # ── Hosted-data condition tags ─────────────────────────────────────
 # These parse, validate, format, and explain everywhere. Evaluation needs
 # data the offline CLI does not have (chain history, earnings calendars,

@@ -113,6 +113,12 @@ Use bare: `when [macd_cross_up]`. Compiles to `macd_crosses_above_signal` / `mac
 | `[bullish_divergence rsi 2]` / `[bearish_divergence rsi 2]` | predicate | indicator (rsi), wing (2), within= (60), period= (14) | `bullish_divergence` / `bearish_divergence` — the two most recent confirmed fractal pivots (strict, wing bars each side, each revealed wing bars after forming) show price making a lower low while RSI makes a higher low (bearish mirrors on highs). Pivots more than `within` bars apart do not pair; the condition changes value only at reveal bars, so the repainting divergence is unwritable. RSI only for now |
 | `[gap_up 2%]` / `[gap_down 2%]` | predicate | gap (2%) | `gap_up` / `gap_down` — open at least N% above/below the prior close |
 | `[up_days 3]` / `[down_days 3]` | predicate | count (required) | `up_days` / `down_days` — N consecutive higher/lower closes |
+| `[inside_bar]` / `[outside_bar]` | predicate | — | `inside_bar` / `outside_bar` — this bar's range strictly inside / strictly engulfing the prior bar's (H2<H1 and L2>L1, or H2>H1 and L2<L1) |
+| `[bullish_engulfing]` / `[bearish_engulfing]` | predicate | — | body-based engulfing: prior body the opposite color, current body strictly contains it (bullish: C1<O1, C2>O2, O2<C1, C2>O1; bearish mirrors) |
+| `[bullish_harami]` / `[bearish_harami]` | predicate | — | current body strictly inside the prior red (bullish) / green (bearish) body; the current bar's color is unconstrained |
+| `[doji 10%]` | predicate | body (10%) | `doji` — abs(C-O) at most `body`% of the bar's high-low range; the range must be positive; thresholds above 50% are refused |
+| `[hammer]` / `[shooting_star]` | predicate | — | shadow-ratio bars: hammer = lower shadow >= 2x body and upper shadow <= body; shooting star mirrors; a zero body is neither |
+| `[morning_star]` / `[evening_star]` | predicate | — | 3-bar reversal: bar1 red (green), bar2 body smaller than bar1's with its body top (bottom) beyond bar1's close, bar3 green (red) closing past bar1's body midpoint. No gap requirement — daily stock bars rarely gap. No trend precondition — compose with [down_days N] for context |
 | `price above 250` / `price below 10` | comparison | level | `price_above_level` / `price_below_level` — absolute price levels |
 | `[adx] > 25` / `[adx] < 15` | operand | period (14) | `adx_greater_than` / `adx_less_than` — Wilder ADX trend-regime filter (threshold 0-100) |
 | `[stoch] < 20`, `> 80`, `crosses above/below N` | operand | period (14), smooth (3) | `stoch_*` family — slow %K vs threshold (0-100) |

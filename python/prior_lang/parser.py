@@ -42,6 +42,24 @@ _PREDICATE_MAP = {
     "obv_rising": "obv_rising",
     "earnings_within": "earnings_within",
     "no_earnings_within": "no_earnings_within",
+    "inside_bar": "inside_bar",
+    "outside_bar": "outside_bar",
+    "bullish_engulfing": "bullish_engulfing",
+    "bearish_engulfing": "bearish_engulfing",
+    "bullish_harami": "bullish_harami",
+    "bearish_harami": "bearish_harami",
+    "doji": "doji",
+    "hammer": "hammer",
+    "shooting_star": "shooting_star",
+    "morning_star": "morning_star",
+    "evening_star": "evening_star",
+}
+
+# Zero-parameter candlestick pattern predicates — pure bar geometry.
+_PATTERN_TAGS = {
+    "inside_bar", "outside_bar", "bullish_engulfing", "bearish_engulfing",
+    "bullish_harami", "bearish_harami", "hammer", "shooting_star",
+    "morning_star", "evening_star",
 }
 
 
@@ -509,6 +527,18 @@ def _desugar_inner(term) -> dict:
             return {"condition": name, "params": {"period": int(p["period"])}}
         if tag.name in ("earnings_within", "no_earnings_within"):
             return {"condition": name, "params": {"days": int(p["days"])}}
+        if tag.name in _PATTERN_TAGS:
+            return {"condition": name, "params": {}}
+        if tag.name == "doji":
+            b = float(p["body"])
+            if not (0 < b <= 50):
+                raise PriorError(
+                    "[doji] body threshold reads as a percent of the bar's "
+                    "range and must be between 0 and 50",
+                    line=tag.line,
+                    suggestion="[doji 10%]",
+                )
+            return {"condition": "doji", "params": {"max_body_pct": b}}
         if tag.name in ("bullish_divergence", "bearish_divergence"):
             ind = str(p["indicator"]).lower()
             if ind != "rsi":
