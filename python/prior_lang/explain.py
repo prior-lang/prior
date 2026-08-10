@@ -108,6 +108,16 @@ def _condition_text_inner(cond: dict) -> str:
         side = "above" if "above" in name else "below"
         ma = name[-3:].upper()
         return f"price is {side} the {_num(p.get('period'))}-period {ma}"
+    if name in ("price_crosses_above_sma", "price_crosses_below_sma",
+                "price_crosses_above_ema", "price_crosses_below_ema"):
+        side = "above" if "above" in name else "below"
+        ma = name[-3:].upper()
+        return (f"price crosses {side} the {_num(p.get('period'))}-period {ma} "
+                "(previous close on the other side)")
+    if name in ("price_at_sma", "price_at_ema"):
+        ma = name[-3:].upper()
+        return (f"the bar touches the {_num(p.get('period'))}-period {ma} "
+                "(its range trades through the line)")
     if name == "rsi_less_than":
         return f"RSI({_num(p.get('period', 14))}) is below {_num(p.get('threshold'))}"
     if name == "rsi_greater_than":
@@ -198,6 +208,13 @@ def _condition_text_inner(cond: dict) -> str:
     if name in ("price_above_vwap", "price_below_vwap"):
         side = "above" if "above" in name else "below"
         return f"price is {side} the {_num(p.get('period', 20))}-bar VWAP"
+    if name in ("price_crosses_above_vwap", "price_crosses_below_vwap"):
+        side = "above" if "above" in name else "below"
+        return (f"price crosses {side} the {_num(p.get('period', 20))}-bar VWAP "
+                "(previous close on the other side)")
+    if name == "price_at_vwap":
+        return (f"the bar touches the {_num(p.get('period', 20))}-bar VWAP "
+                "(its range trades through the line)")
     if name in ("price_above_supertrend", "price_below_supertrend",
                 "price_crosses_above_supertrend", "price_crosses_below_supertrend"):
         band = f"the SuperTrend line (ATR {_num(p.get('period', 10))}, {_num(p.get('multiplier', 3.0))}x)"

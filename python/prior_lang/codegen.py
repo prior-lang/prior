@@ -233,6 +233,31 @@ def _hcode(condition: Dict[str, Any], uid: str = "") -> str:
             f"sma = close.rolling({n}, min_periods={n}).mean()\n"
             f"    cond = (close < sma).fillna(False)"
         )
+    if ctype in ("price_crosses_above_sma", "price_crosses_below_sma", "price_at_sma"):
+        n = int(p["period"])
+        if ctype == "price_at_sma":
+            # touch: the bar's range traded through the line
+            expr = "cond = ((df['low'] <= sma) & (df['high'] >= sma)).fillna(False)"
+        elif ctype == "price_crosses_above_sma":
+            expr = "cond = ((close > sma) & (close.shift(1) <= sma.shift(1))).fillna(False)"
+        else:
+            expr = "cond = ((close < sma) & (close.shift(1) >= sma.shift(1))).fillna(False)"
+        return (
+            f"sma = close.rolling({n}, min_periods={n}).mean()\n"
+            f"    {expr}"
+        )
+    if ctype in ("price_crosses_above_ema", "price_crosses_below_ema", "price_at_ema"):
+        n = int(p["period"])
+        if ctype == "price_at_ema":
+            expr = "cond = ((df['low'] <= ema) & (df['high'] >= ema)).fillna(False)"
+        elif ctype == "price_crosses_above_ema":
+            expr = "cond = ((close > ema) & (close.shift(1) <= ema.shift(1))).fillna(False)"
+        else:
+            expr = "cond = ((close < ema) & (close.shift(1) >= ema.shift(1))).fillna(False)"
+        return (
+            f"ema = close.ewm(span={n}, adjust=False, min_periods={n}).mean()\n"
+            f"    {expr}"
+        )
     if ctype == "rsi_less_than":
         n = int(p.get("period", 14))
         t = float(p["threshold"])
@@ -567,6 +592,21 @@ def _hcode(condition: Dict[str, Any], uid: str = "") -> str:
             f"    v = df['volume'].rolling({n}, min_periods={n}).sum()\n"
             f"    vwap = pv / v.replace(0, np.nan)\n"
             f"    cond = (close {op} vwap).fillna(False)"
+        )
+    if ctype in ("price_crosses_above_vwap", "price_crosses_below_vwap", "price_at_vwap"):
+        n = int(p.get("period", 20))
+        if ctype == "price_at_vwap":
+            expr = "cond = ((df['low'] <= vwap) & (df['high'] >= vwap)).fillna(False)"
+        elif ctype == "price_crosses_above_vwap":
+            expr = "cond = ((close > vwap) & (close.shift(1) <= vwap.shift(1))).fillna(False)"
+        else:
+            expr = "cond = ((close < vwap) & (close.shift(1) >= vwap.shift(1))).fillna(False)"
+        return (
+            f"tp = (df['high'] + df['low'] + close) / 3\n"
+            f"    pv = (tp * df['volume']).rolling({n}, min_periods={n}).sum()\n"
+            f"    v = df['volume'].rolling({n}, min_periods={n}).sum()\n"
+            f"    vwap = pv / v.replace(0, np.nan)\n"
+            f"    {expr}"
         )
     if ctype == "bollinger_squeeze":
         n = int(p.get("period", 20))

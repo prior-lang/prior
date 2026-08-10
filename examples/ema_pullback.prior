@@ -1,0 +1,15 @@
+# The pullback reclaim: weakness first, then price crosses back
+# up through the 9-period EMA. The cross is an event, not a state —
+# the previous close was at or below the line, this one is above it.
+
+strategy "EMA Pullback Reclaim"
+
+universe $NVDA
+timeframe 1d
+
+when [down_days 2] then within 3 bars price crosses above [ema 9]
+  buy [5% portfolio]
+
+sell when price crosses below [ema 9]
+  or [stop 4%]
+  or [after 15 bars]

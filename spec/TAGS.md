@@ -63,8 +63,13 @@ The right-hand side must be a number 0–100. Readback: *"RSI({period}) {is belo
 | `[ema 50] crosses below [ema 200]` | `ema_crosses_below {fast: 50, slow: 200}` |
 | `[sma 50] crosses above [sma 200]` | `sma_crosses_above {fast: 50, slow: 200}` |
 | `[sma 50] crosses below [sma 200]` | `sma_crosses_below {fast: 50, slow: 200}` |
+| `price crosses above [ema 9]` | `price_crosses_above_ema {period: 9}` (v0.21) |
+| `price crosses below [sma 50]` | `price_crosses_below_sma` (v0.21) |
+| `price at [ema 9]` | `price_at_ema {period: 9}` (v0.21) |
 
 In an MA-cross comparison, the left tag is `fast` and the right is `slow`; `fast >= slow` is a compile error (*"the faster average goes on the left: [ema 50] crosses above [ema 200]"*).
+
+**Price crossing and touching the line (v0.21).** `price crosses above` is an event, not a state: this close on the new side AND the previous close on the other side (or exactly on the line) — two closed bars, no lookahead. `price at` is a touch: the bar's range traded through the line, `low <= line <= high`, confirmed at the close. A bar whose whole range sits beyond the line — including a gap over it — did not touch it. The line's value is computed with the bar's own close, so both conditions are knowable exactly at the close, like every condition in the language.
 
 ### `[macd_cross_up]` · `[macd_cross_down]` — predicate
 
@@ -122,7 +127,7 @@ Use bare: `when [macd_cross_up]`. Compiles to `macd_crosses_above_signal` / `mac
 | `price above 250` / `price below 10` | comparison | level | `price_above_level` / `price_below_level` — absolute price levels |
 | `[adx] > 25` / `[adx] < 15` | operand | period (14) | `adx_greater_than` / `adx_less_than` — Wilder ADX trend-regime filter (threshold 0-100) |
 | `[stoch] < 20`, `> 80`, `crosses above/below N` | operand | period (14), smooth (3) | `stoch_*` family — slow %K vs threshold (0-100) |
-| `price above [vwap]` / `below [vwap 30]` | operand | period (20) | `price_above_vwap` / `price_below_vwap` — rolling volume-weighted typical price |
+| `price above [vwap]` / `below [vwap 30]` / `crosses above` / `crosses below` / `at [vwap]` | operand | period (20) | `price_{above,below,crosses_above,crosses_below,at}_vwap` — rolling volume-weighted typical price; crossing and touch follow the v0.21 semantics stated in the `[sma]`/`[ema]` section |
 | `price crosses above [supertrend]`, `crosses below`, `above`, `below` | operand | period (10), multiplier (3.0) | `price_{above,below,crosses_above,crosses_below}_supertrend` — ATR trailing-stop trend line (Wilder ATR). The band locks against the prior bar and only trails in the trend direction; direction at each bar reads close and prior-bar values only, so it cannot look ahead or repaint |
 | `[squeeze]` | predicate | lookback (126), pct (10), period (20), std (2.0) | `bollinger_squeeze` — band width in its lowest N% of the lookback |
 | `[obv_rising]` | predicate | period (20) | `obv_rising` — on-balance volume above its N-bar average |

@@ -97,8 +97,15 @@ def _condition_to_term_inner(cond: dict):
         side = cmpmap[name.rsplit("_fractal_", 1)[0]]
         frac = "fractal_high" if name.endswith("high") else "fractal_low"
         return Comparison(("price",), side, _tag(frac, [("number", _n(p.get("wing", 2)))]))
-    if name in ("price_above_sma", "price_below_sma", "price_above_ema", "price_below_ema"):
-        side = "above" if "above" in name else "below"
+    if name in ("price_above_sma", "price_below_sma", "price_above_ema", "price_below_ema",
+                "price_crosses_above_sma", "price_crosses_below_sma", "price_at_sma",
+                "price_crosses_above_ema", "price_crosses_below_ema", "price_at_ema"):
+        if name.startswith("price_at"):
+            side = "at"
+        elif "crosses" in name:
+            side = "crosses_above" if "above" in name else "crosses_below"
+        else:
+            side = "above" if "above" in name else "below"
         ma = name[-3:]
         return Comparison(("price",), side, _tag(ma, [("number", _n(p["period"]))]))
 
@@ -195,8 +202,14 @@ def _condition_to_term_inner(cond: dict):
         side = "above" if "above" in name else "below"
         return Comparison(("price",), side, ("number", _n(p["level"])))
 
-    if name in ("price_above_vwap", "price_below_vwap"):
-        side = "above" if "above" in name else "below"
+    if name in ("price_above_vwap", "price_below_vwap",
+                "price_crosses_above_vwap", "price_crosses_below_vwap", "price_at_vwap"):
+        if name == "price_at_vwap":
+            side = "at"
+        elif "crosses" in name:
+            side = "crosses_above" if "above" in name else "crosses_below"
+        else:
+            side = "above" if "above" in name else "below"
         pos = []
         if _n(p.get("period", 20)) != 20:
             pos.append(("number", _n(p["period"])))

@@ -612,14 +612,25 @@ def _desugar_inner(term) -> dict:
                 "params": {"period": int(p["period"]), "num_std": float(p["std"]), "band": _BOLLINGER[right.name]},
             }
         if right.name in ("sma", "ema", "vwap"):
-            if cmp not in ("above", "below"):
+            table = {
+                "above": f"price_above_{right.name}",
+                "below": f"price_below_{right.name}",
+                "crosses_above": f"price_crosses_above_{right.name}",
+                "crosses_below": f"price_crosses_below_{right.name}",
+                # touch: the bar's range traded through the line
+                "at": f"price_at_{right.name}",
+            }
+            name = table.get(cmp)
+            if name is None:
                 raise PriorError(
-                    f"price compares to a moving average or VWAP with above/below, not '{_cmp_text(cmp)}'",
+                    f"price compares to [{right.name}] with above, below, "
+                    f"crosses above, crosses below, or at (the bar touched "
+                    f"it), not '{_cmp_text(cmp)}'",
                     line=term.line,
-                    suggestion=f"price above [{right.name} {int(right.params['period'])}]",
+                    suggestion=f"price crosses above [{right.name} {int(right.params['period'])}]",
                 )
             return {
-                "condition": f"price_{cmp}_{right.name}",
+                "condition": name,
                 "params": {"period": int(right.params["period"])},
             }
         if right.name == "supertrend":
