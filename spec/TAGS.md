@@ -274,3 +274,16 @@ Dynamic universes rank tickers against each other, so the local backtester requi
 4. An example or test exercises the tag through compile + backtest.
 
 Tags are the human names; registry keys are the stable API. Registry keys never rename for the language's sake.
+
+## Portfolio blocks (v0.19)
+
+Not tags — statements. A portfolio file holds one `portfolio` block and 2–10 `strategy` blocks:
+
+```
+portfolio "My Book"
+  sleeve 60% "First"
+  sleeve 40% "Second"
+  rebalance monthly
+```
+
+`rebalance` is mandatory (`never`, `weekly`, `monthly`; `daily` is refused as churn). Weights sum to 100. Every strategy block must be allocated by exactly one sleeve, sleeves share one timeframe, rules sleeves name exactly one instrument, and undefined-risk options structures (straddle, strangle, jade_lizard) cannot be sleeves. Sleeves compose as return streams; true-ups pay stated costs on turnover; the report prints correlations and same-ticker overlap.

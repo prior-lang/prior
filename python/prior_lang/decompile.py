@@ -367,6 +367,18 @@ def strategy_to_source(strategy: dict) -> str:
     Renders what it recognizes. Use `strategy_from_json` when the JSON
     comes from outside and unrecognized content should be an error.
     """
+    if strategy.get("portfolio"):
+        port = strategy["portfolio"]
+        block = [f'portfolio "{strategy.get("name")}"']
+        for s in port.get("sleeves", []):
+            block.append(
+                f'  sleeve {float(s["weight_pct"]):g}% "{s["strategy"].get("name")}"')
+        block.append(f"  rebalance {port.get('rebalance')}")
+        parts = ["\n".join(block)]
+        for s in port.get("sleeves", []):
+            parts.append(strategy_to_source(s["strategy"]).rstrip("\n"))
+        return "\n\n".join(parts) + "\n"
+
     uni_check = strategy.get("universe", {}) or {}
     if uni_check.get("type") == "pair":
         global _PAIR_LEFT

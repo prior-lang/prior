@@ -15,7 +15,7 @@ from .errors import PriorError
 
 KEYWORDS = {
     "strategy", "universe", "timeframe", "when", "if", "buy", "sell", "risk",
-    "short", "cover",
+    "short", "cover", "portfolio", "sleeve",
     "hold", "rebalance", "top", "bottom", "by", "where", "weighted", "equally",
     "wheel", "write", "close", "roll",
     "and", "or", "at", "above", "below", "crosses", "price", "volume",

@@ -39,4 +39,4 @@ def test_schema_is_declared_as_package_data():
 def test_load_schema_returns_usable_json():
     schema = prior_lang.load_schema()
     assert schema["$schema"].startswith("https://json-schema.org/draft/2020-12")
-    assert "universe" in schema["properties"]
+    assert "universe" in schema["$defs"]["strategy"]["properties"]

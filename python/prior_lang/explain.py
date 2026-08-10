@@ -252,6 +252,27 @@ def _exit_bits(ex: dict, is_short: bool) -> list:
 
 
 def explain_strategy(strategy: dict) -> str:
+    if strategy.get("portfolio"):
+        port = strategy["portfolio"]
+        n = len(port.get("sleeves", []))
+        policy = port.get("rebalance")
+        lines = [f"{strategy.get('name')}."]
+        if policy == "never":
+            lines.append(
+                f"A book of {n} sleeves that drift with their own results — "
+                "weights are set once and never trued up.")
+        else:
+            lines.append(
+                f"A book of {n} sleeves. Between rebalances the sleeves drift "
+                f"with their own results; at each {policy} close they true up "
+                "to target weights, paying stated costs on the turnover.")
+        for s in port.get("sleeves", []):
+            sub = s.get("strategy") or {}
+            first = explain_strategy(sub).split("\n")
+            body = next((ln for ln in first[1:] if ln.strip()), "").strip()
+            lines.append(f"{s.get('weight_pct'):g}% in {sub.get('name')} — {body}")
+        return "\n".join(lines)
+
     lines: list[str] = []
 
     if strategy.get("name"):

@@ -76,6 +76,25 @@ def _term(t) -> str:
 
 
 def format_program(prog: Program, include_comments: bool = True) -> str:
+    if getattr(prog, "portfolio_spec", None) is not None:
+        spec = prog.portfolio_spec
+        parts: list[str] = []
+        head: list[str] = []
+        if include_comments and spec.leading_comments:
+            head.append("\n".join(spec.leading_comments))
+        block = [f'portfolio "{spec.name}"']
+        for w, sname, _line in spec.sleeves:
+            block.append(f'  sleeve {w:g}% "{sname}"')
+        block.append(f"  rebalance {spec.rebalance}")
+        head.append("\n".join(block))
+        parts.append("\n".join(head))
+        for sub in prog.sleeves:
+            parts.append(format_program(sub, include_comments=include_comments).rstrip("\n"))
+        out = "\n\n".join(parts) + "\n"
+        if include_comments and prog.trailing_comments:
+            out += "\n" + "\n".join(prog.trailing_comments) + "\n"
+        return out
+
     blocks: list[str] = []
 
     # Comments re-attach to their statements wherever canonical ordering

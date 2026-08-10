@@ -1,0 +1,36 @@
+# A book is one claim about two ideas held together. The portfolio
+# block states the one assumption a combined curve cannot avoid — the
+# rebalance policy — and the report prices the true-ups instead of
+# pretending they are free. Sleeves drift between rebalances; at each
+# monthly close they true up to 60/40 and pay stated costs on the
+# turnover. What the block cannot hide: whether the sleeves are one
+# bet in two costumes. The report prints their correlation and any
+# shared-ticker overlap, so diversification is measured, not assumed.
+
+portfolio "Rev And Trend"
+  sleeve 60% "Quiet Dip"
+  sleeve 40% "Ride The 50"
+  rebalance monthly
+
+strategy "Quiet Dip"
+
+universe $AAPL
+timeframe 1d
+
+when [rsi] < 35 and [quiet 2%]
+  buy [risk 1%]
+
+sell when [rsi] crosses above 55
+  or [stop 5%]
+  or [after 15 bars]
+
+strategy "Ride The 50"
+
+universe $MSFT
+timeframe 1d
+
+when price above [sma 50] and [adx] > 20
+  buy [risk 1%]
+
+sell when price below [sma 50]
+  or [stop 6%]

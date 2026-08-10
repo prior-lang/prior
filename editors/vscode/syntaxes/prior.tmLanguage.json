@@ -65,7 +65,7 @@
     },
     "keywords": {
       "name": "keyword.control.prior",
-      "match": "(?i)\\b(strategy|universe|timeframe|when|if|buy|short|sell|cover|hold|rebalance|risk|where|weighted|equally|by|top|bottom|and|or|then|within|wheel|write|close|roll|half)\\b"
+      "match": "(?i)\\b(strategy|portfolio|sleeve|universe|timeframe|when|if|buy|short|sell|cover|hold|rebalance|risk|where|weighted|equally|by|top|bottom|and|or|then|within|wheel|write|close|roll|half)\\b"
     },
     "comparators": {
       "name": "keyword.operator.comparison.prior",

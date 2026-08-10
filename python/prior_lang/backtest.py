@@ -383,6 +383,7 @@ def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
     return {
         "bars": len(df),
         "equity": equity,
+        "position": position,
         **dollars,
         **({"after_losses": gate_stats} if gate_stats else {}),
         "total_return_pct": round(total_return * 100, 2),
@@ -540,6 +541,7 @@ def run_pair_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
     return {
         "pair": f"{a}/{b}",
         "equity": equity,
+        "position": position,
         "form": form,
         "bars": len(signals),
         "total_return_pct": round(total_return * 100, 2),
@@ -618,6 +620,7 @@ def run_ranking_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
     return {
         "bars": len(closes),
         "equity": equity,
+        "weights": weights,
         "tickers": len(panel),
         "total_return_pct": round(total_return * 100, 2),
         "equal_weight_universe_pct": round(bench_total * 100, 2),
@@ -631,4 +634,208 @@ def run_ranking_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
         "holdings": holdings,
         "skipped_not_in_universe": skipped,
         "universe_not_in_file": missing,
+    }
+
+
+# ── Portfolio of strategies (sleeves) ──────────────────────────────
+
+def _rebalance_dates(index, policy: str) -> set:
+    pd, _np = _require_pandas()
+    """Last bar of each calendar period — the same convention the
+    ranking code generator emits (%Y-%m monthly, ISO %G-%V weekly).
+    'never' (or a non-datetime index) rebalances nothing."""
+    if policy == "never" or not isinstance(index, pd.DatetimeIndex):
+        return set()
+    fmt = "%G-%V" if policy == "weekly" else "%Y-%m"
+    series = index.to_series()
+    key = series.dt.strftime(fmt)
+    return set(series.groupby(key).tail(1))
+
+
+def _sleeve_run(strategy: dict, df, chains, cost_bps: float, contract_fee: float):
+    """Run one sleeve through its existing runner, unchanged. Returns
+    (kind, result, daily_returns, exposure) where exposure maps ticker →
+    per-bar direction Series (+1 long / -1 short / 0 flat), or None when
+    a sleeve type cannot expose it honestly (options, v1)."""
+    from .errors import PriorError
+
+    name = strategy.get("name")
+    if strategy.get("options"):
+        from .options_backtest import run_options_backtest
+        tickers = (strategy.get("universe") or {}).get("tickers") or []
+        bars = df[df["ticker"] == tickers[0]].drop(columns=["ticker"]) \
+            if "ticker" in df.columns else df
+        res = run_options_backtest(strategy, bars, chains, contract_fee=contract_fee)
+        base = res.get("capital_base")
+        if not base:
+            raise PriorError(
+                f"sleeve {name!r} reports no capital base, so it has no "
+                "percent-return stream to compose")
+        rets = res["equity"].diff().fillna(res["equity"].iloc[0]) / float(base)
+        return "options", res, rets, None
+    if (strategy.get("universe") or {}).get("type") == "pair":
+        res = run_pair_backtest(strategy, df, cost_bps=cost_bps)
+        pos = res["position"]
+        a, b = [t.upper() for t in strategy["universe"]["tickers"]]
+        sign = pos.apply(lambda x: 0 if x == 0 else (1 if x > 0 else -1))
+        return "pair", res, _equity_rets(res["equity"]), {a: sign, b: -sign}
+    if strategy.get("ranking"):
+        res = run_ranking_backtest(strategy, df, cost_bps=cost_bps)
+        w = res["weights"]
+        expo = {t: (w[t] > 1e-9).astype(int) for t in w.columns}
+        return "ranking", res, _equity_rets(res["equity"]), expo
+    tickers = (strategy.get("universe") or {}).get("tickers") or []
+    bars = df[df["ticker"] == tickers[0]].drop(columns=["ticker"]) \
+        if "ticker" in df.columns else df
+    if not len(bars):
+        raise PriorError(f"no rows for {tickers[0]} in the data file "
+                         f"(sleeve {name!r})")
+    res = run_backtest(strategy, bars, cost_bps=cost_bps)
+    pos = res["position"]
+    sign = pos.apply(lambda x: 0 if x == 0 else (1 if x > 0 else -1))
+    return "rules", res, _equity_rets(res["equity"]), {tickers[0]: sign}
+
+
+def _equity_rets(equity):
+    r = equity.pct_change()
+    if len(r):
+        r.iloc[0] = float(equity.iloc[0]) - 1.0
+    return r.fillna(0.0)
+
+
+def run_portfolio_backtest(doc: dict, df, chains=None, capital=None,
+                           cost_bps: float = 0.0,
+                           contract_fee: float = 0.0) -> dict:
+    """Compose sleeves as return streams into one book.
+
+    Each sleeve runs its existing runner unchanged on its own slice of
+    the data. Between rebalances sleeve values drift; at each boundary
+    close they true up to target weights and that day is charged
+    cost_bps on the true-up turnover — the same convention the ranking
+    backtest uses. The combined window is the intersection of sleeve
+    windows, and every convention here is printed by the report rather
+    than assumed silently.
+    """
+    from .errors import PriorError
+    pd, _np = _require_pandas()
+
+    port = doc["portfolio"]
+    policy = port["rebalance"]
+    specs = port["sleeves"]
+
+    names, weights, kinds, results, rets_by, expo_by = [], [], [], [], {}, {}
+    for s in specs:
+        strat = s["strategy"]
+        name = strat.get("name")
+        kind, res, rets, expo = _sleeve_run(strat, df, chains, cost_bps, contract_fee)
+        names.append(name)
+        weights.append(float(s["weight_pct"]) / 100.0)
+        kinds.append(kind)
+        results.append(res)
+        rets_by[name] = rets
+        expo_by[name] = expo
+
+    common = None
+    for r in rets_by.values():
+        common = r.index if common is None else common.intersection(r.index)
+    common = common.sort_values()
+    if len(common) < 40:
+        raise PriorError(
+            f"sleeves share only {len(common)} bars — a combined curve over "
+            "fewer than 40 is noise wearing a number")
+
+    reb = _rebalance_dates(common, policy)
+    v = list(weights)                      # book starts at 1.0
+    book_vals = []
+    trueups = []
+    aligned = {n: rets_by[n].reindex(common).fillna(0.0) for n in names}
+    for t in common:
+        for i, n in enumerate(names):
+            v[i] *= (1.0 + float(aligned[n].loc[t]))
+        book = sum(v)
+        if t in reb:
+            turnover = sum(abs(weights[i] * book - v[i]) for i in range(len(v))) / book
+            if turnover > 1e-12:
+                book *= (1.0 - turnover * (cost_bps / 10_000.0))
+                trueups.append(turnover)
+            v = [weights[i] * book for i in range(len(v))]
+        book_vals.append(book)
+    equity = pd.Series(book_vals, index=common)
+    book_rets = _equity_rets(equity)
+
+    total_return = float(equity.iloc[-1] - 1)
+    years = max(len(common) / 252.0, 1e-9)
+    cagr = float((1 + total_return) ** (1 / years) - 1) if total_return > -1 else -1.0
+    vol = float(book_rets.std() * (252 ** 0.5))
+    sharpe = float(book_rets.mean() / book_rets.std() * (252 ** 0.5)) \
+        if book_rets.std() > 0 else 0.0
+    running_max = equity.cummax()
+    max_dd = float((equity / running_max - 1).min())
+
+    correlations = []
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            c = aligned[names[i]].corr(aligned[names[j]])
+            correlations.append({"a": names[i], "b": names[j],
+                                 "corr": round(float(c), 3) if pd.notna(c) else None})
+
+    overlap = []
+    overlap_unavailable = [n for n in names if expo_by[n] is None]
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            ea, eb = expo_by[names[i]], expo_by[names[j]]
+            if ea is None or eb is None:
+                continue
+            for tk in set(ea) & set(eb):
+                a = ea[tk].reindex(common).fillna(0)
+                b = eb[tk].reindex(common).fillna(0)
+                both = (a != 0) & (b != 0)
+                if not both.any():
+                    continue
+                opposed = both & ((a * b) < 0)
+                overlap.append({
+                    "a": names[i], "b": names[j], "ticker": tk,
+                    "both_pct": round(float(both.mean() * 100), 1),
+                    "opposed_pct": round(float(opposed.mean() * 100), 1),
+                })
+
+    sleeves_out = []
+    for i, n in enumerate(names):
+        res = results[i]
+        sleeves_out.append({
+            "name": n,
+            "weight_pct": round(weights[i] * 100, 2),
+            "kind": kinds[i],
+            "total_return_pct": res.get("total_return_pct"),
+            "sharpe": res.get("sharpe"),
+            "max_drawdown_pct": res.get("max_drawdown_pct"),
+        })
+
+    dollars = {}
+    if capital:
+        dollars = {
+            "capital": round(float(capital), 2),
+            "final_equity_usd": round(capital * float(equity.iloc[-1]), 2),
+            "net_pnl_usd": round(capital * total_return, 2),
+        }
+    return {
+        "bars": len(common),
+        "equity": equity,
+        **dollars,
+        "window": {"from": str(common[0])[:10], "to": str(common[-1])[:10]},
+        "total_return_pct": round(total_return * 100, 2),
+        "cagr_pct": round(cagr * 100, 2),
+        "sharpe": round(sharpe, 3),
+        "sharpe_note": SHARPE_NOTE,
+        "volatility_pct": round(vol * 100, 2),
+        "max_drawdown_pct": round(max_dd * 100, 2),
+        "cost_bps": float(cost_bps),
+        "rebalance": policy,
+        "rebalances": len(trueups),
+        "avg_trueup_turnover_pct": round(100 * sum(trueups) / len(trueups), 2)
+            if trueups else 0.0,
+        "sleeves": sleeves_out,
+        "correlations": correlations,
+        "overlap": overlap,
+        "overlap_unavailable": overlap_unavailable,
     }

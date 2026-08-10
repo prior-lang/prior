@@ -2,97 +2,71 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/prior-lang/prior/blob/main/spec/strategy.schema.json",
   "title": "PRIOR strategy interchange",
-  "description": "Structural schema for the JSON a PRIOR strategy compiles to (SPEC.md section 11). Intended for pipelines that GENERATE strategies, so a malformed object is caught before it reaches the compiler. This is a structural gate, NOT the language: it cannot check that a tag exists, that its parameters are valid, that kinds match, or that a strategy has the exits it needs. The parser remains the authority. Validate here first, then confirm with `prior validate --stdin --json`.",
-  "type": "object",
-  "required": [
-    "version",
-    "name",
-    "universe",
-    "timeframe"
-  ],
-  "properties": {
-    "version": {
-      "type": "string",
-      "description": "Interchange version, tracks the spec version. Currently 0.7.",
-      "examples": [
-        "0.7"
-      ]
+  "description": "Structural schema for the JSON a PRIOR strategy compiles to (SPEC.md section 11). Intended for pipelines that GENERATE strategies, so a malformed object is caught before it reaches the compiler. This is a structural gate, NOT the language: it cannot check that a tag exists, that its parameters are valid, that kinds match, or that a strategy has the exits it needs. The parser remains the authority. Validate here first, then confirm with `prior validate --stdin --json`. A document is either a single strategy or a portfolio: named sleeves with fixed weights summing to 100 and a stated rebalance policy, each sleeve wrapping a full strategy object.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/strategy"
     },
-    "name": {
-      "type": [
-        "string",
-        "null"
+    {
+      "type": "object",
+      "required": [
+        "version",
+        "name",
+        "portfolio"
       ],
-      "description": "From the `strategy` statement. Null when the source omits it, which is legal."
-    },
-    "timeframe": {
-      "type": "string",
-      "pattern": "^[0-9]+[mhdw]$",
-      "description": "Lexical form only. The engine is the authority on which timeframes it supports; the compiler validates against that set.",
-      "examples": [
-        "1d",
-        "1h",
-        "4h",
-        "15m"
-      ]
-    },
-    "direction": {
-      "enum": [
-        "long",
-        "short",
-        "mixed"
-      ],
-      "description": "Absent on strategies that have no directional entry block, such as rotation strategies."
-    },
-    "universe": {
-      "$ref": "#/$defs/universe"
-    },
-    "entry": {
-      "$ref": "#/$defs/entry"
-    },
-    "exit": {
-      "$ref": "#/$defs/exit"
-    },
-    "position_sizing": {
-      "$ref": "#/$defs/positionSizing"
-    },
-    "risk": {
-      "$ref": "#/$defs/risk"
-    },
-    "options": {
-      "type": "object",
-      "description": "Present on options strategies (wheel, write-rules). Shape is not constrained here; see TAGS.md."
-    },
-    "rules": {
-      "type": "array",
-      "description": "Present on multi-rule strategies, including files carrying both long and short entries.",
-      "items": {
-        "type": "object"
-      }
-    },
-    "exits": {
-      "type": "object",
-      "description": "Per-direction exit blocks on multi-rule strategies, as opposed to the single `exit` block."
-    },
-    "rebalance": {
-      "type": "string",
-      "description": "Rotation strategies only.",
-      "examples": [
-        "daily",
-        "weekly",
-        "monthly"
-      ]
-    },
-    "ranking": {
-      "type": "object",
-      "description": "Rotation strategies only: the hold-top-N-by-metric block."
-    },
-    "partial_exit": {
-      "type": "object",
-      "description": "Present when the strategy sells or covers half a position."
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "portfolio": {
+          "type": "object",
+          "required": [
+            "rebalance",
+            "sleeves"
+          ],
+          "properties": {
+            "rebalance": {
+              "enum": [
+                "never",
+                "weekly",
+                "monthly"
+              ]
+            },
+            "sleeves": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "required": [
+                  "weight_pct",
+                  "strategy"
+                ],
+                "properties": {
+                  "weight_pct": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "strategy": {
+                    "$ref": "#/$defs/strategy"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
-  },
-  "additionalProperties": true,
+  ],
   "$defs": {
     "universe": {
       "type": "object",
@@ -386,6 +360,98 @@
         }
       },
       "additionalProperties": false
+    },
+    "strategy": {
+      "type": "object",
+      "required": [
+        "version",
+        "name",
+        "universe",
+        "timeframe"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Interchange version, tracks the spec version. Currently 0.7.",
+          "examples": [
+            "0.7"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "From the `strategy` statement. Null when the source omits it, which is legal."
+        },
+        "timeframe": {
+          "type": "string",
+          "pattern": "^[0-9]+[mhdw]$",
+          "description": "Lexical form only. The engine is the authority on which timeframes it supports; the compiler validates against that set.",
+          "examples": [
+            "1d",
+            "1h",
+            "4h",
+            "15m"
+          ]
+        },
+        "direction": {
+          "enum": [
+            "long",
+            "short",
+            "mixed"
+          ],
+          "description": "Absent on strategies that have no directional entry block, such as rotation strategies."
+        },
+        "universe": {
+          "$ref": "#/$defs/universe"
+        },
+        "entry": {
+          "$ref": "#/$defs/entry"
+        },
+        "exit": {
+          "$ref": "#/$defs/exit"
+        },
+        "position_sizing": {
+          "$ref": "#/$defs/positionSizing"
+        },
+        "risk": {
+          "$ref": "#/$defs/risk"
+        },
+        "options": {
+          "type": "object",
+          "description": "Present on options strategies (wheel, write-rules). Shape is not constrained here; see TAGS.md."
+        },
+        "rules": {
+          "type": "array",
+          "description": "Present on multi-rule strategies, including files carrying both long and short entries.",
+          "items": {
+            "type": "object"
+          }
+        },
+        "exits": {
+          "type": "object",
+          "description": "Per-direction exit blocks on multi-rule strategies, as opposed to the single `exit` block."
+        },
+        "rebalance": {
+          "type": "string",
+          "description": "Rotation strategies only.",
+          "examples": [
+            "daily",
+            "weekly",
+            "monthly"
+          ]
+        },
+        "ranking": {
+          "type": "object",
+          "description": "Rotation strategies only: the hold-top-N-by-metric block."
+        },
+        "partial_exit": {
+          "type": "object",
+          "description": "Present when the strategy sells or covers half a position."
+        }
+      },
+      "additionalProperties": true
     }
   }
 }

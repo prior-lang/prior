@@ -16,7 +16,7 @@ from .errors import PriorError
 from .formatter import format_program
 from .parser import Program, parse_source
 
-__version__ = "0.18.1"
+__version__ = "0.19.0"
 __all__ = [
     "PriorError", "Program", "parse_source", "compile_source",
     "format_source", "strategy_to_source", "strategy_from_json",

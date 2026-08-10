@@ -66,6 +66,17 @@ _PATTERN_TAGS = {
 # ── AST ────────────────────────────────────────────────────────────
 
 @dataclass
+class PortfolioSpec:
+    """The book header of a portfolio file: named sleeves with fixed
+    weights and a MANDATORY rebalance policy — the one assumption a
+    combined curve cannot avoid making, so it is never defaulted."""
+    name: str | None = None
+    rebalance: str | None = None          # never | weekly | monthly
+    sleeves: list = field(default_factory=list)   # [(weight_pct, name, line)]
+    leading_comments: list = field(default_factory=list)
+
+
+@dataclass
 class TagNode:
     name: str                      # spec name, or __pct_portfolio__ / __dollar__
     params: dict                   # resolved params (defaults filled)
@@ -157,6 +168,11 @@ class Program:
     comment_map: dict = field(default_factory=dict)
     trailing_comments: list = field(default_factory=list)
     source_name: str = "<string>"
+    # Portfolio files only: the book header plus one sub-Program per
+    # sleeve. Single-strategy files leave both untouched, so every
+    # existing caller sees exactly the Program it always did.
+    portfolio_spec: "PortfolioSpec | None" = None
+    sleeves: list = field(default_factory=list)   # list[Program]
 
     def _metric_json(self, tag: TagNode) -> dict:
         return {"name": tag.name, "params": {k: v for k, v in tag.params.items()}}
@@ -176,6 +192,20 @@ class Program:
         return {"type": "manual", "tickers": [self.scoped_ticker]}
 
     def to_json(self) -> dict:
+        if self.portfolio_spec is not None:
+            spec = self.portfolio_spec
+            return {
+                "version": VERSION,
+                "name": spec.name,
+                "portfolio": {
+                    "rebalance": spec.rebalance,
+                    "sleeves": [
+                        {"weight_pct": w, "strategy": sub.to_json()}
+                        for (w, sname, _line) in spec.sleeves
+                        for sub in [next(s for s in self.sleeves if s.name == sname)]
+                    ],
+                },
+            }
         if self.opt_form is not None:
             universe = self._universe_json()
             mgmt: dict = {}
@@ -1257,12 +1287,12 @@ def _stmt_kind(ll) -> str:
     return kw
 
 
-def parse_source(source: str, filename: str = "<string>") -> Program:
+def _parse_single(lines: list, standalone: list, filename: str) -> Program:
+    """Parse one strategy block's logical lines into a Program. This is
+    the historical parse_source body unchanged; single-strategy files
+    route straight here, so back-compat is the same code path."""
     prog = Program(source_name=filename)
     seen: set[str] = set()
-
-    standalone: list = []
-    lines = tokenize(source, comments_out=standalone)
 
     # Anchor comment blocks to the statement that follows them.
     counts: dict = {}
@@ -1612,6 +1642,189 @@ def parse_source(source: str, filename: str = "<string>") -> Program:
             cur.err(f"'{head.raw}' cannot start a statement", tok=head)
 
     _validate(prog)
+    return prog
+
+
+def _parse_portfolio_block(lines: list, standalone: list) -> PortfolioSpec:
+    """The book header: portfolio "Name" / sleeve N% "Strategy" lines /
+    a mandatory rebalance policy. Nothing else may live in the block."""
+    spec = PortfolioSpec(leading_comments=[text for _ln, text in standalone])
+    for ll in lines:
+        cur = _Cursor(ll)
+        head = cur.next()
+        kw = head.value if head.kind == "keyword" else None
+        if kw == "portfolio":
+            tok = cur.next()
+            if tok.kind != "string":
+                cur.err('portfolio takes a quoted name: portfolio "My Book"', tok=tok)
+            spec.name = tok.value
+        elif kw == "sleeve":
+            wtok = cur.next()
+            if wtok.kind != "percent":
+                cur.err('sleeve reads: sleeve 60% "Strategy Name"', tok=wtok)
+            ntok = cur.next()
+            if ntok.kind != "string":
+                cur.err('sleeve needs the quoted name of a strategy block in this file',
+                        tok=ntok)
+            spec.sleeves.append((float(wtok.value), ntok.value, ll.line))
+        elif kw == "rebalance":
+            tok = cur.next()
+            word = str(tok.value).lower() if tok.kind in ("word", "keyword") else None
+            if word == "daily":
+                cur.err(
+                    "rebalance daily trues sleeves up every bar, which turns the "
+                    "book into churn — never, weekly, and monthly are the honest "
+                    "policies", tok=tok)
+            if word not in ("never", "weekly", "monthly"):
+                cur.err("a portfolio rebalances never, weekly, or monthly", tok=tok)
+            if spec.rebalance is not None:
+                cur.err("one rebalance policy per portfolio", tok=head)
+            spec.rebalance = word
+        else:
+            cur.err(
+                "a portfolio block holds only sleeve and rebalance statements — "
+                "strategies live in their own blocks below", tok=head)
+    return spec
+
+
+def _validate_portfolio(prog: Program) -> None:
+    spec = prog.portfolio_spec
+    subs = prog.sleeves
+    if spec.rebalance is None:
+        raise PriorError(
+            "a portfolio must state its rebalance policy — the combined curve "
+            "cannot avoid making that assumption, so it is never defaulted",
+            suggestion="rebalance monthly   (or: never, weekly)")
+    if not (2 <= len(spec.sleeves) <= 10):
+        raise PriorError("a portfolio composes 2 to 10 sleeves")
+    total = sum(w for w, _n, _l in spec.sleeves)
+    if abs(total - 100.0) > 0.01:
+        raise PriorError(
+            f"sleeve weights must sum to 100% — these sum to {total:g}%")
+    names = [s.name for s in subs]
+    dup = {n for n in names if names.count(n) > 1}
+    if dup:
+        raise PriorError(f"duplicate strategy name: {sorted(dup)[0]!r}")
+    by_name = {s.name: s for s in subs}
+    referenced = []
+    for w, sname, line in spec.sleeves:
+        if w <= 0:
+            raise PriorError(f"sleeve {sname!r} has a non-positive weight", line=line)
+        if sname not in by_name:
+            raise PriorError(
+                f"sleeve {sname!r} names no strategy block in this file", line=line,
+                suggestion=f'strategy "{sname}"')
+        if sname in referenced:
+            raise PriorError(f"sleeve {sname!r} is allocated twice", line=line)
+        referenced.append(sname)
+    orphans = [n for n in names if n not in referenced]
+    if orphans:
+        raise PriorError(
+            f"strategy {orphans[0]!r} has no sleeve — every strategy block in a "
+            "portfolio file must be allocated")
+    tfs = {(s.timeframe or "1d") for s in subs}
+    if len(tfs) > 1:
+        raise PriorError(
+            "sleeves share one bar clock — mixed timeframes "
+            f"({', '.join(sorted(tfs))}) cannot compose into one curve")
+    for s in subs:
+        if s.opt_form is not None:
+            struct = s.opt_option.name if s.opt_option is not None else "csp"
+            if struct in ("straddle", "strangle", "jade_lizard"):
+                raise PriorError(
+                    f"[{struct}] has undefined risk and therefore no percent-return "
+                    f"stream — {s.name!r} cannot compose into a book; defined-risk "
+                    "structures (csp, covered_call, spreads, long options) can")
+            continue
+        if s.rank_select is not None or s.pair is not None:
+            continue
+        # Rules sleeves need exactly one instrument: a universe rules run
+        # is independent per ticker and has no single curve to compose.
+        n_tickers = len(s.universe_tickers)
+        if s.universe_tag is not None or n_tickers != 1:
+            raise PriorError(
+                f"a rules sleeve needs one instrument — {s.name!r} runs across a "
+                "universe, which produces independent per-ticker results with no "
+                "single curve", suggestion="universe $NVDA   (or use a ranking sleeve)")
+
+
+def parse_source(source: str, filename: str = "<string>") -> Program:
+    standalone: list = []
+    lines = tokenize(source, comments_out=standalone)
+    kinds = [_stmt_kind(ll) for ll in lines]
+    strat_idx = [i for i, k in enumerate(kinds) if k == "strategy"]
+    port_idx = [i for i, k in enumerate(kinds) if k == "portfolio"]
+
+    if not port_idx:
+        if len(strat_idx) > 1:
+            ll = lines[strat_idx[1]]
+            cur = _Cursor(ll)
+            head = cur.next()
+            cur.err(
+                "two strategy blocks need a portfolio block that allocates them",
+                tok=head,
+                suggestion='portfolio "My Book"\n  sleeve 60% "First"\n'
+                           '  sleeve 40% "Second"\n  rebalance monthly')
+        return _parse_single(lines, standalone, filename)
+
+    if len(port_idx) > 1:
+        ll = lines[port_idx[1]]
+        cur = _Cursor(ll)
+        cur.err("one portfolio block per file", tok=cur.next())
+    headers = sorted(port_idx + strat_idx)
+    if headers[0] != 0:
+        ll = lines[0]
+        cur = _Cursor(ll)
+        cur.err(
+            "in a portfolio file every statement lives inside the portfolio "
+            "block or a strategy block", tok=cur.next())
+    if len(strat_idx) < 2:
+        ll = lines[port_idx[0]]
+        cur = _Cursor(ll)
+        cur.err("a portfolio composes at least two strategy blocks",
+                tok=cur.next())
+
+    # Segment the statement stream at block headers; a standalone comment
+    # anchors to the first statement after it, so it travels with that
+    # statement's segment. Comments after the last statement trail the file.
+    seg_bounds = headers + [len(lines)]
+    segments = []  # (kind, seg_lines)
+    for j, h in enumerate(seg_bounds[:-1]):
+        segments.append((kinds[h], lines[h:seg_bounds[j + 1]]))
+
+    # Comment partition, done simply: each comment goes to the segment of
+    # the first statement whose line is greater than the comment's line.
+    stmt_lines = [ll.line for ll in lines]
+    seg_of_stmt = []
+    for j, h in enumerate(seg_bounds[:-1]):
+        seg_of_stmt.extend([j] * (seg_bounds[j + 1] - h))
+    seg_comments: list[list] = [[] for _ in segments]
+    trailing: list[str] = []
+    for ln, text in standalone:
+        target = None
+        for i, sl in enumerate(stmt_lines):
+            if sl > ln:
+                target = seg_of_stmt[i]
+                break
+        if target is None:
+            trailing.append(text)
+        else:
+            seg_comments[target].append((ln, text))
+
+    spec: PortfolioSpec | None = None
+    subs: list[Program] = []
+    for (kind, seg_lines), comments in zip(segments, seg_comments):
+        if kind == "portfolio":
+            spec = _parse_portfolio_block(seg_lines, comments)
+        else:
+            subs.append(_parse_single(seg_lines, comments, filename))
+
+    prog = Program(source_name=filename)
+    prog.name = spec.name
+    prog.portfolio_spec = spec
+    prog.sleeves = subs
+    prog.trailing_comments = trailing
+    _validate_portfolio(prog)
     return prog
 
 

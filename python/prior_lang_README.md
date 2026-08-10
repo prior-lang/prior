@@ -305,6 +305,8 @@ The rule activity table, the Sharpe convention label, the stated cost model (all
 
 Fractal levels (`[fractal_high N]` / `[fractal_low N]`, v0.14) were specified in review by **Gabriel Guevara Muradas**, including the reveal delay that makes marking a fractal on its own bar unwritable.
 
+Portfolios (v0.19) were prompted by a question from **Cory Parker**: can multiple strategies backtest as one book, with per-sleeve allocations and a combined curve? The design refuses the parts a combined curve cannot state honestly — the rebalance policy is mandatory rather than defaulted, true-ups pay stated costs on their turnover, and sleeve correlation and same-ticker overlap are printed so diversification is measured instead of assumed.
+
 ## License
 
 MIT, see [LICENSE](https://github.com/prior-lang/prior/blob/main/LICENSE). Use it, fork it, build your own runner on the open interchange format.

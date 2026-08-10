@@ -66,15 +66,29 @@ def build_receipt(
     first_bar=None,
     last_bar=None,
 ) -> dict:
+    strat_block = {
+        "name": strategy.get("name"),
+        "digest": f"sha256:{strategy_digest(program)}",
+        "timeframe": strategy.get("timeframe"),
+        "direction": strategy.get("direction"),
+    }
+    if strategy.get("portfolio"):
+        # The document digest above binds the whole book; per-sleeve
+        # digests let each sleeve be verified on its own.
+        from .canonical import strategy_digest as _digest
+        strat_block["direction"] = "portfolio"
+        strat_block["timeframe"] = (
+            (strategy["portfolio"]["sleeves"][0]["strategy"] or {}).get("timeframe"))
+        strat_block["sleeves"] = [
+            {"name": s["strategy"].get("name"),
+             "weight_pct": s.get("weight_pct"),
+             "digest": f"sha256:{_digest(s['strategy'])}"}
+            for s in strategy["portfolio"]["sleeves"]
+        ]
     return {
         "receipt": "prior/1",
         "prior_version": prior_version,
-        "strategy": {
-            "name": strategy.get("name"),
-            "digest": f"sha256:{strategy_digest(program)}",
-            "timeframe": strategy.get("timeframe"),
-            "direction": strategy.get("direction"),
-        },
+        "strategy": strat_block,
         "data": {
             "file": Path(data_path).name,
             "digest": f"sha256:{file_digest(data_path)}",

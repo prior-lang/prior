@@ -117,6 +117,12 @@ def _cmd_explain(args) -> int:
     print(json.dumps(strategy, indent=2))
     print()
     print("── Generated Python (what actually runs) ─────────────────")
+    if strategy.get("portfolio"):
+        print("A book has no single generated function — each sleeve compiles "
+              "on its own,\nand the composition (drift, true-ups, costs on "
+              "turnover) is backtest arithmetic.\nRun prior explain on a "
+              "sleeve's own file to see its generated code.")
+        return 0
     sys.stdout.write(compile_strategy(strategy))
     return 0
 
@@ -181,7 +187,8 @@ def _cmd_backtest(args) -> int:
         )
     from .backtest import (  # lazy: needs pandas
         load_bars, pair_trade_log, run_backtest, run_pair_backtest,
-        run_ranking_backtest, run_universe_backtest, trade_log,
+        run_portfolio_backtest, run_ranking_backtest, run_universe_backtest,
+        trade_log,
     )
 
     def _print_trades(trades):
@@ -260,6 +267,85 @@ def _cmd_backtest(args) -> int:
                 last_bar=str(df.index.max().date()),
             )
         print(json.dumps(clean, indent=2, default=str))
+        return 0
+
+    if strategy.get("portfolio"):
+        port = strategy["portfolio"]
+        n_sleeves = len(port["sleeves"])
+        needs_chains = any(s["strategy"].get("options") for s in port["sleeves"])
+        if "ticker" not in df.columns:
+            raise SystemExit(
+                "a portfolio spans instruments — the data file needs a ticker "
+                "column (one stacked set of bars per sleeve instrument)")
+        if args.trades:
+            raise SystemExit(
+                "per-sleeve trade logs: backtest a sleeve's own file alone "
+                "(a book-level log is planned)")
+        chains = None
+        if needs_chains:
+            if not args.chains:
+                raise SystemExit(
+                    "an options sleeve needs real chain data — add --chains chains.csv")
+            from .options_backtest import load_chains
+            chains = load_chains(args.chains)
+        res = run_portfolio_backtest(strategy, df, chains=chains,
+                                     capital=args.capital, cost_bps=cost_bps,
+                                     contract_fee=args.contract_fee)
+        if args.as_json:
+            _emit_json(res)
+            return 0
+        if args.equity:
+            res["equity"].rename("equity").to_csv(args.equity, header=True,
+                                                  index_label="date")
+        name = strategy.get("name") or "Portfolio"
+        print(f"{name} — {n_sleeves} sleeves, rebalance {res['rebalance']}, "
+              f"{res['bars']} shared bars ({res['window']['from']} to "
+              f"{res['window']['to']})")
+        rows = [
+            ("Total return", f"{res['total_return_pct']}%"),
+            ("CAGR", f"{res['cagr_pct']}%"),
+            ("Sharpe", f"{res['sharpe']}  ({res['sharpe_note']})"),
+            ("Costs", f"{cost_bps:g} bps per side"
+                      if cost_bps else
+                      "none modeled. Real fills pay fees and slippage; "
+                      "add --fee-bps / --slippage-bps"),
+            ("Fills", "at the close of the bar a rule fires; sleeves true up "
+                      "at rebalance closes"),
+            ("Volatility", f"{res['volatility_pct']}%"),
+            ("Max drawdown", f"{res['max_drawdown_pct']}%"),
+            ("Rebalances", f"{res['rebalances']}"
+                           + (f" (avg true-up turnover {res['avg_trueup_turnover_pct']}%,"
+                              " costs charged on it)"
+                              if res["rebalances"] else "")),
+        ]
+        if args.capital:
+            rows = [
+                ("Starting capital", f"${res['capital']:,.2f}"),
+                ("Final equity", f"${res['final_equity_usd']:,.2f}"),
+                ("Net P&L", f"${res['net_pnl_usd']:,.2f}"),
+            ] + rows
+        width = max(len(label) for label, _ in rows)
+        for label, value in rows:
+            print(f"  {label:<{width}}  {value}")
+        print("\n  SLEEVE                    WEIGHT   RETURN  SHARPE   MAXDD")
+        for s in res["sleeves"]:
+            ret = f"{s['total_return_pct']}%" if s["total_return_pct"] is not None else "n/a"
+            shp = f"{s['sharpe']}" if s["sharpe"] is not None else "n/a"
+            dd = f"{s['max_drawdown_pct']}%" if s["max_drawdown_pct"] is not None else "n/a"
+            print(f"  {s['name'][:24]:<24} {s['weight_pct']:>6g}% {ret:>8} "
+                  f"{shp:>7} {dd:>7}")
+        for c in res["correlations"]:
+            corr = "n/a" if c["corr"] is None else f"{c['corr']:+.2f}"
+            print(f"  corr({c['a']}, {c['b']}) = {corr}")
+        for o in res["overlap"]:
+            note = f", opposed on {o['opposed_pct']}%" if o["opposed_pct"] else ""
+            print(f"  overlap: {o['a']} and {o['b']} both held {o['ticker']} on "
+                  f"{o['both_pct']}% of bars{note} — the book's true exposure "
+                  "differs from the sum of sleeves")
+        if res["overlap_unavailable"]:
+            print(f"  overlap not measured for: "
+                  f"{', '.join(res['overlap_unavailable'])} (options sleeves "
+                  "expose no per-bar ticker exposure yet)")
         return 0
 
     if strategy.get("options"):
@@ -569,6 +655,10 @@ def _cmd_trace(args) -> int:
     from .trace import trace_report
 
     strategy = _load_program(args.file).to_json()
+    if strategy.get("portfolio"):
+        raise SystemExit(
+            "trace works one sleeve at a time — put the sleeve in its own "
+            "file to trace its conditions")
     df = load_bars(args.data)
     name = strategy.get("name") or Path(args.file).stem
 

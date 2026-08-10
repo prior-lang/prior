@@ -14,6 +14,15 @@ EXAMPLES = sorted((Path(__file__).parents[2] / "examples").glob("*.prior"))
 def test_example_parses_and_compiles(path):
     strategy = prior_lang.compile_source(path.read_text(), filename=path.name)
     assert strategy["version"] == "0.7"
+    if "portfolio" in strategy:
+        port = strategy["portfolio"]
+        assert port["rebalance"] in ("never", "weekly", "monthly")
+        assert len(port["sleeves"]) >= 2
+        assert abs(sum(s["weight_pct"] for s in port["sleeves"]) - 100) < 0.01
+        for s in port["sleeves"]:
+            assert s["strategy"]["universe"]["type"] in (
+                "prebuilt", "manual", "dynamic", "pair")
+        return
     if "options" in strategy:
         assert strategy["options"]["option"]["type"]
     elif "ranking" in strategy:
@@ -32,7 +41,7 @@ def test_example_formats_idempotently(path):
 
 
 def test_examples_exist():
-    assert len(EXAMPLES) == 35
+    assert len(EXAMPLES) == 36
 
 
 def test_bollinger_reversal_compiles_exactly():
