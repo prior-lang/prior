@@ -71,7 +71,8 @@ def test_shadow_book_counts_declined_trades():
     # both DECLINED trades — a counter running on the real book would
     # have seen only trade 3's win and refused it.
     assert list(np.nonzero(g)[0]) == [8, 9, 20, 21]
-    assert stats == {"n": 2, "shadow_trades": 6, "admitted": 2, "declined": 4}
+    assert stats == {"n": 2, "shadow_trades": 6, "admitted": 2, "declined": 4,
+                     "admitted_avg_pct": 0.0, "declined_avg_pct": -5.0}
     assert declined == {0, 4, 12, 16}
 
 

@@ -482,6 +482,7 @@ def _cmd_backtest(args) -> int:
         ("Costs", f"{cost_bps:g} bps per side"
                   if cost_bps else
                   "none modeled. Real fills pay fees and slippage; add --fee-bps / --slippage-bps"),
+        ("Fills", "at the close of the bar a rule fires; one position at a time"),
         ("Volatility", f"{result['volatility_pct']}%"),
         ("Max drawdown", f"{result['max_drawdown_pct']}%"),
         ("Trades", result["trades"]),
@@ -504,6 +505,15 @@ def _cmd_backtest(args) -> int:
             f"\nEntry gate [after_losses {gate['n']}]: admitted {gate['admitted']} of "
             f"{gate['shadow_trades']} shadow trades{flag}"
         )
+        if gate.get("admitted_avg_pct") is not None or gate.get("declined_avg_pct") is not None:
+            def _b(v):
+                return "n/a" if v is None else f"{v:+.2f}%"
+            # The decomposition a cross-engine comparison needs, printed
+            # instead of derived: what the gate kept vs what it refused.
+            print(
+                f"  avg per trade, close to close, gross: admitted "
+                f"{_b(gate.get('admitted_avg_pct'))}, declined {_b(gate.get('declined_avg_pct'))}"
+            )
         if gate["admitted"] == 0 and gate["shadow_trades"]:
             print(
                 "  The shadow book never reached the loss streak, so every result above\n"

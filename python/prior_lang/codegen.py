@@ -2346,13 +2346,22 @@ def _after_losses_gate(signals, close, n):
     entry_dir = 0
     entry_ok = False
     prev = 0.0
+    # Per-bucket outcome sums so the report can print the decomposition
+    # directly (gross close-to-close, shadow fills). A trade still open
+    # at the end has no outcome and joins neither bucket.
+    adm_sum = adm_n = dec_sum = dec_n = 0
     for i in range(len(sig)):
         s = sig[i]
         opening = s != 0 and prev == 0
         if entry_i is not None and (s == 0 or (s > 0) != (prev > 0)):
             outcome = entry_dir * (px[i] / px[entry_i] - 1.0)
             streak = streak + 1 if outcome < 0 else 0
-            if not entry_ok:
+            if entry_ok:
+                adm_sum += outcome
+                adm_n += 1
+            else:
+                dec_sum += outcome
+                dec_n += 1
                 declined.add(entry_i)
                 sig[entry_i:i] = 0
             entry_i = None
@@ -2370,7 +2379,9 @@ def _after_losses_gate(signals, close, n):
         sig[entry_i:] = 0
     out = pd.Series(sig, index=signals.index)
     stats = {"n": n, "shadow_trades": entries, "admitted": admitted,
-             "declined": entries - admitted}
+             "declined": entries - admitted,
+             "admitted_avg_pct": float(round(100.0 * adm_sum / adm_n, 4)) if adm_n else None,
+             "declined_avg_pct": float(round(100.0 * dec_sum / dec_n, 4)) if dec_n else None}
     return out, declined, stats
 
 
