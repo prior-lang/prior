@@ -176,7 +176,7 @@ def dynamic_membership(strategy: dict, df):
 
 
 def run_universe_backtest(strategy: dict, df, capital: float | None = None,
-                          cost_bps: float = 0.0) -> dict:
+                          cost_bps: float = 0.0, fill: str = "close") -> dict:
     """Run the strategy independently over each ticker in a multi-ticker
     frame, filtered to the strategy's universe.
 
@@ -206,7 +206,8 @@ def run_universe_backtest(strategy: dict, df, capital: float | None = None,
     for ticker in wanted:
         bars = df[df["ticker"].str.upper() == ticker].drop(columns=["ticker"]).sort_index()
         mask = membership[ticker].reindex(bars.index).fillna(False) if membership is not None else None
-        result = run_backtest(strategy, bars, mask=mask, capital=capital, cost_bps=cost_bps)
+        result = run_backtest(strategy, bars, mask=mask, capital=capital,
+                              cost_bps=cost_bps, fill=fill)
         result["ticker"] = ticker
         per_ticker.append(result)
 
@@ -289,8 +290,41 @@ def _weight_series(strategy: dict, df, signals, capital: float, namespace):
     return pd.Series(w_arr, index=df.index)
 
 
+FILL_CONVENTIONS = ("close", "next-open")
+
+
+def _check_fill(fill: str, frames) -> None:
+    """Refuse an unknown fill convention, and refuse next-open when the
+    data carries no open column — the price the convention needs."""
+    from .errors import PriorError
+
+    if fill not in FILL_CONVENTIONS:
+        raise PriorError(
+            f"fill must be one of {', '.join(FILL_CONVENTIONS)} — got {fill!r}")
+    if fill == "next-open":
+        for f in frames:
+            if "open" not in f.columns:
+                raise PriorError(
+                    "fill next-open prices entries at the next bar's open, "
+                    "but the data has no open column")
+
+
+def _next_open_returns(pd, np, position, gap, intra, cc):
+    """Per-bar returns when positions change at the NEXT bar's open.
+
+    On a bar where the position changes, the old position carries the
+    overnight gap and the new position the open-to-close move, compounded.
+    On unchanged bars the full close-to-close return applies — identical
+    to the close-fill accounting.
+    """
+    prev = position.shift(1).fillna(0.0)
+    changed = position.ne(prev)
+    split = (1.0 + prev * gap) * (1.0 + position * intra) - 1.0
+    return pd.Series(np.where(changed, split, position * cc), index=position.index)
+
+
 def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
-                 cost_bps: float = 0.0, score_from=None) -> dict:
+                 cost_bps: float = 0.0, score_from=None, fill: str = "close") -> dict:
     """Execute the strategy over one instrument's bars; return metrics.
 
     `mask` (optional bool Series on df's index) zeroes signals outside a
@@ -313,6 +347,7 @@ def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
     nothing: live trading carries its indicator history in the same way.
     """
     pd, np = _require_pandas()
+    _check_fill(fill, (df,))
 
     code = compile_strategy(strategy)
     namespace = {"pd": pd, "np": np, "math": math}
@@ -333,7 +368,13 @@ def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
     # Signal at bar i → position over bar i+1 (no lookahead at the fill).
     position = signals.shift(1).fillna(0)
     bar_returns = close.pct_change().fillna(0)
-    strat_returns = position * bar_returns
+    if fill == "next-open":
+        opens = df["open"].astype(float)
+        gap = (opens / close.shift(1) - 1).fillna(0.0)
+        intra = (close / opens - 1).fillna(0.0)
+        strat_returns = _next_open_returns(pd, np, position, gap, intra, bar_returns)
+    else:
+        strat_returns = position * bar_returns
     if cost_bps:
         # Cost charged on every unit of position change (entries, exits,
         # partials, flips all pay in proportion to size traded).
@@ -344,8 +385,16 @@ def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
     # Trades: edges of the signal's SIGN (fractional partials like 0.5 stay
     # inside one trade; a reverse-flip closes one trade and opens the next).
     # An open trade closes at the last bar. Short PnL is the mirrored move.
+    # Trades are priced at the fill: the signal bar's close, or under
+    # next-open the following bar's open — so a signal on the final bar
+    # never fills there, and an exit that cannot fill marks at the last
+    # close, matching the equity accounting.
     sig = signals.to_numpy()
     closes = close.to_numpy()
+    if fill == "next-open":
+        fillp = np.append(df["open"].astype(float).to_numpy()[1:], np.nan)
+    else:
+        fillp = closes
     trades = []
     entry_i = None
     entry_dir = 0
@@ -353,16 +402,18 @@ def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
     for i in range(len(sig)):
         s = sig[i]
         if s != 0 and prev == 0:
-            entry_i, entry_dir = i, (1 if s > 0 else -1)
+            if not math.isnan(fillp[i]):
+                entry_i, entry_dir = i, (1 if s > 0 else -1)
         elif entry_i is not None and (s == 0 or (s > 0) != (prev > 0)):
-            trades.append(entry_dir * (closes[i] / closes[entry_i] - 1))
-            if s != 0:  # flipped straight into the other direction
+            out = fillp[i] if not math.isnan(fillp[i]) else closes[-1]
+            trades.append(entry_dir * (out / fillp[entry_i] - 1))
+            if s != 0 and not math.isnan(fillp[i]):  # flipped straight into the other direction
                 entry_i, entry_dir = i, (1 if s > 0 else -1)
             else:
                 entry_i = None
         prev = s
     if entry_i is not None:
-        trades.append(entry_dir * (closes[-1] / closes[entry_i] - 1))
+        trades.append(entry_dir * (closes[-1] / fillp[entry_i] - 1))
 
     total_return = float(equity.iloc[-1] - 1)
     years = max(len(df) / 252.0, 1e-9)
@@ -384,6 +435,7 @@ def run_backtest(strategy: dict, df, mask=None, capital: float | None = None,
         "bars": len(df),
         "equity": equity,
         "position": position,
+        "fill": fill,
         **dollars,
         **({"after_losses": gate_stats} if gate_stats else {}),
         "total_return_pct": round(total_return * 100, 2),
@@ -471,7 +523,8 @@ def pair_trade_log(strategy: dict, df) -> list[dict]:
     return _pair_events_into_trades(events, sig.index, spread.to_numpy())
 
 
-def run_pair_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
+def run_pair_backtest(strategy: dict, df, cost_bps: float = 0.0,
+                      fill: str = "close") -> dict:
     """Backtest a spread strategy over a multi-ticker frame containing
     both legs. Position accounting is equal dollar legs: a +1 spread
     signal is long leg A / short leg B, each at half the allocation, so
@@ -491,6 +544,7 @@ def run_pair_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
             f"the data file has no rows for {', '.join(missing)} — a spread "
             f"backtest needs both legs ({a} and {b})"
         )
+    _check_fill(fill, (panel[a], panel[b]))
 
     code = compile_strategy(strategy)
     namespace = {"pd": pd, "np": np, "math": math}
@@ -504,7 +558,17 @@ def run_pair_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
     position = signals.shift(1).fillna(0)
     ret_a = close_a.pct_change().fillna(0)
     ret_b = close_b.pct_change().fillna(0)
-    strat_returns = position * 0.5 * (ret_a - ret_b)
+    pair_cc = 0.5 * (ret_a - ret_b)
+    if fill == "next-open":
+        open_a = panel[a]["open"].astype(float).reindex(signals.index)
+        open_b = panel[b]["open"].astype(float).reindex(signals.index)
+        gap = 0.5 * ((open_a / close_a.shift(1) - 1).fillna(0.0)
+                     - (open_b / close_b.shift(1) - 1).fillna(0.0))
+        intra = 0.5 * ((close_a / open_a - 1).fillna(0.0)
+                       - (close_b / open_b - 1).fillna(0.0))
+        strat_returns = _next_open_returns(pd, np, position, gap, intra, pair_cc)
+    else:
+        strat_returns = position * pair_cc
     if cost_bps:
         turnover = position.diff().abs().fillna(position.abs())
         strat_returns = strat_returns - turnover * (cost_bps / 10_000.0)  # both legs, half-sized each
@@ -543,6 +607,7 @@ def run_pair_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
         "equity": equity,
         "position": position,
         "form": form,
+        "fill": fill,
         "bars": len(signals),
         "total_return_pct": round(total_return * 100, 2),
         "spread_start": round(float(spread.iloc[0]), 4),
@@ -558,7 +623,8 @@ def run_pair_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
     }
 
 
-def run_ranking_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
+def run_ranking_backtest(strategy: dict, df, cost_bps: float = 0.0,
+                         fill: str = "close") -> dict:
     """Portfolio backtest for a ranking (hold) strategy over a multi-ticker
     frame. Joint semantics: weights come from generate_weights, equity is
     the weighted sum of per-ticker returns, and turnover (mean |weight
@@ -593,7 +659,24 @@ def run_ranking_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
 
     closes = pd.DataFrame({t: p["close"] for t, p in panel.items()}).sort_index()
     rets = closes.pct_change().fillna(0)
-    port_rets = (weights.shift(1).fillna(0) * rets).sum(axis=1)
+    w_eff = weights.shift(1).fillna(0)
+    if fill == "next-open":
+        _check_fill(fill, panel.values())
+        opens = pd.DataFrame({t: p["open"] for t, p in panel.items()}).sort_index()
+        opens = opens.reindex(index=closes.index, columns=closes.columns)
+        gap = (opens / closes.shift(1) - 1).fillna(0.0)
+        intra = (closes / opens - 1).fillna(0.0)
+        # Weights decided at bar i-1's close trade at bar i's open: the
+        # book holds the PREVIOUS weights overnight and the new weights
+        # intraday, compounded, on every bar the weights changed.
+        w_prev = weights.shift(2).fillna(0)
+        changed = w_eff.ne(w_prev).any(axis=1)
+        split = ((1.0 + (w_prev * gap).sum(axis=1))
+                 * (1.0 + (w_eff * intra).sum(axis=1)) - 1.0)
+        port_rets = (w_eff * rets).sum(axis=1).where(~changed, split)
+    else:
+        _check_fill(fill, ())
+        port_rets = (w_eff * rets).sum(axis=1)
     if cost_bps:
         daily_turnover = weights.diff().abs().sum(axis=1).fillna(0)
         port_rets = port_rets - daily_turnover * (cost_bps / 10_000.0)
@@ -621,6 +704,7 @@ def run_ranking_backtest(strategy: dict, df, cost_bps: float = 0.0) -> dict:
         "bars": len(closes),
         "equity": equity,
         "weights": weights,
+        "fill": fill,
         "tickers": len(panel),
         "total_return_pct": round(total_return * 100, 2),
         "equal_weight_universe_pct": round(bench_total * 100, 2),
@@ -652,7 +736,8 @@ def _rebalance_dates(index, policy: str) -> set:
     return set(series.groupby(key).tail(1))
 
 
-def _sleeve_run(strategy: dict, df, chains, cost_bps: float, contract_fee: float):
+def _sleeve_run(strategy: dict, df, chains, cost_bps: float, contract_fee: float,
+                fill: str = "close"):
     """Run one sleeve through its existing runner, unchanged. Returns
     (kind, result, daily_returns, exposure) where exposure maps ticker →
     per-bar direction Series (+1 long / -1 short / 0 flat), or None when
@@ -661,6 +746,11 @@ def _sleeve_run(strategy: dict, df, chains, cost_bps: float, contract_fee: float
 
     name = strategy.get("name")
     if strategy.get("options"):
+        if fill != "close":
+            raise PriorError(
+                f"sleeve {name!r} is an options strategy — options fill at "
+                "chain marks, so fill next-open is not available for books "
+                "with options sleeves")
         from .options_backtest import run_options_backtest
         tickers = (strategy.get("universe") or {}).get("tickers") or []
         bars = df[df["ticker"] == tickers[0]].drop(columns=["ticker"]) \
@@ -674,13 +764,13 @@ def _sleeve_run(strategy: dict, df, chains, cost_bps: float, contract_fee: float
         rets = res["equity"].diff().fillna(res["equity"].iloc[0]) / float(base)
         return "options", res, rets, None
     if (strategy.get("universe") or {}).get("type") == "pair":
-        res = run_pair_backtest(strategy, df, cost_bps=cost_bps)
+        res = run_pair_backtest(strategy, df, cost_bps=cost_bps, fill=fill)
         pos = res["position"]
         a, b = [t.upper() for t in strategy["universe"]["tickers"]]
         sign = pos.apply(lambda x: 0 if x == 0 else (1 if x > 0 else -1))
         return "pair", res, _equity_rets(res["equity"]), {a: sign, b: -sign}
     if strategy.get("ranking"):
-        res = run_ranking_backtest(strategy, df, cost_bps=cost_bps)
+        res = run_ranking_backtest(strategy, df, cost_bps=cost_bps, fill=fill)
         w = res["weights"]
         expo = {t: (w[t] > 1e-9).astype(int) for t in w.columns}
         return "ranking", res, _equity_rets(res["equity"]), expo
@@ -690,7 +780,7 @@ def _sleeve_run(strategy: dict, df, chains, cost_bps: float, contract_fee: float
     if not len(bars):
         raise PriorError(f"no rows for {tickers[0]} in the data file "
                          f"(sleeve {name!r})")
-    res = run_backtest(strategy, bars, cost_bps=cost_bps)
+    res = run_backtest(strategy, bars, cost_bps=cost_bps, fill=fill)
     pos = res["position"]
     sign = pos.apply(lambda x: 0 if x == 0 else (1 if x > 0 else -1))
     return "rules", res, _equity_rets(res["equity"]), {tickers[0]: sign}
@@ -705,7 +795,8 @@ def _equity_rets(equity):
 
 def run_portfolio_backtest(doc: dict, df, chains=None, capital=None,
                            cost_bps: float = 0.0,
-                           contract_fee: float = 0.0) -> dict:
+                           contract_fee: float = 0.0,
+                           fill: str = "close") -> dict:
     """Compose sleeves as return streams into one book.
 
     Each sleeve runs its existing runner unchanged on its own slice of
@@ -718,6 +809,7 @@ def run_portfolio_backtest(doc: dict, df, chains=None, capital=None,
     """
     from .errors import PriorError
     pd, _np = _require_pandas()
+    _check_fill(fill, ())
 
     port = doc["portfolio"]
     policy = port["rebalance"]
@@ -727,7 +819,8 @@ def run_portfolio_backtest(doc: dict, df, chains=None, capital=None,
     for s in specs:
         strat = s["strategy"]
         name = strat.get("name")
-        kind, res, rets, expo = _sleeve_run(strat, df, chains, cost_bps, contract_fee)
+        kind, res, rets, expo = _sleeve_run(strat, df, chains, cost_bps,
+                                            contract_fee, fill=fill)
         names.append(name)
         weights.append(float(s["weight_pct"]) / 100.0)
         kinds.append(kind)
@@ -838,6 +931,7 @@ def run_portfolio_backtest(doc: dict, df, chains=None, capital=None,
         "max_drawdown_pct": round(max_dd * 100, 2),
         "cost_bps": float(cost_bps),
         "rebalance": policy,
+        "fill": fill,
         "rebalances": len(trueups),
         "avg_trueup_turnover_pct": round(100 * sum(trueups) / len(trueups), 2)
             if trueups else 0.0,

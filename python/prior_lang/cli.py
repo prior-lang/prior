@@ -207,6 +207,10 @@ def _cmd_backtest(args) -> int:
         args.as_json = True  # a receipt is the JSON payload, with provenance
     program = _load_program(args.file)
     strategy = program.to_json()
+    if strategy.get("options") and args.fill != "close":
+        raise SystemExit(
+            "options fills happen at chain marks (mid), not bar prices — "
+            "--fill next-open applies to stock strategies")
     if strategy.get("options") and not args.chains:
         raise SystemExit(
             "options backtests need real chain data, which cannot be bundled or "
@@ -231,6 +235,15 @@ def _cmd_backtest(args) -> int:
               f"({len(df)} of {n_before} rows)")
     name = strategy.get("name") or Path(args.file).stem
     cost_bps = float(args.fee_bps or 0.0) + float(args.slippage_bps or 0.0)
+    fill = args.fill
+    # The fill convention is an assumption every equity number sits on, so
+    # the report states it and names which side of reality it errs toward.
+    fill_desc = (
+        "at the close of the bar a rule fires (favorable: that print can't "
+        "itself be traded; --fill next-open shows the conservative number)"
+        if fill == "close" else
+        "at the next bar's open after a rule fires (conservative: entries "
+        "pay the overnight gap)")
 
     # Timeframe sanity: a 1h strategy fed daily bars silently means
     # nonsense ([after 24 bars] = 24 days). Warn on a clear mismatch.
@@ -261,6 +274,7 @@ def _cmd_backtest(args) -> int:
                 metrics=clean, prior_version=__version__,
                 capital=args.capital, fee_bps=args.fee_bps,
                 slippage_bps=args.slippage_bps, contract_fee=args.contract_fee,
+                fill=args.fill,
                 date_from=args.date_from, date_to=args.date_to,
                 bars=len(df),
                 first_bar=str(df.index.min().date()),
@@ -290,7 +304,7 @@ def _cmd_backtest(args) -> int:
             chains = load_chains(args.chains)
         res = run_portfolio_backtest(strategy, df, chains=chains,
                                      capital=args.capital, cost_bps=cost_bps,
-                                     contract_fee=args.contract_fee)
+                                     contract_fee=args.contract_fee, fill=fill)
         if args.as_json:
             _emit_json(res)
             return 0
@@ -309,8 +323,7 @@ def _cmd_backtest(args) -> int:
                       if cost_bps else
                       "none modeled. Real fills pay fees and slippage; "
                       "add --fee-bps / --slippage-bps"),
-            ("Fills", "at the close of the bar a rule fires; sleeves true up "
-                      "at rebalance closes"),
+            ("Fills", f"{fill_desc}; sleeves true up at rebalance closes"),
             ("Volatility", f"{res['volatility_pct']}%"),
             ("Max drawdown", f"{res['max_drawdown_pct']}%"),
             ("Rebalances", f"{res['rebalances']}"
@@ -424,7 +437,7 @@ def _cmd_backtest(args) -> int:
                 "a spread backtest needs both legs — the data file needs a "
                 "ticker column (one stacked set of rows per ticker)"
             )
-        res = run_pair_backtest(strategy, df, cost_bps=cost_bps)
+        res = run_pair_backtest(strategy, df, cost_bps=cost_bps, fill=fill)
         if args.as_json:
             return _emit_json(res)
         if args.equity:
@@ -439,6 +452,7 @@ def _cmd_backtest(args) -> int:
             ("CAGR", f"{res['cagr_pct']}%"),
             ("Sharpe", res["sharpe"]),
             ("Max drawdown", f"{res['max_drawdown_pct']}%"),
+            ("Fills", fill_desc),
             ("Spread start → end", f"{res['spread_start']} → {res['spread_end']}"),
             ("Trades", res["trades"]),
             ("Win rate", f"{res['win_rate_pct']}%" if res["win_rate_pct"] is not None else "n/a"),
@@ -463,7 +477,7 @@ def _cmd_backtest(args) -> int:
                 "ranking strategies decide across a universe — the data file "
                 "needs a ticker column (one stacked set of rows per ticker)"
             )
-        res = run_ranking_backtest(strategy, df, cost_bps=cost_bps)
+        res = run_ranking_backtest(strategy, df, cost_bps=cost_bps, fill=fill)
         if args.as_json:
             return _emit_json(res)
         if args.equity:
@@ -479,6 +493,8 @@ def _cmd_backtest(args) -> int:
             ("CAGR", f"{res['cagr_pct']}%"),
             ("Sharpe", res["sharpe"]),
             ("Max drawdown", f"{res['max_drawdown_pct']}%"),
+            ("Fills", "holdings trade at rebalance closes" if fill == "close"
+                      else "holdings trade at the open after each rebalance"),
             ("Rebalances", res["rebalances"]),
             ("Avg turnover", f"{res['avg_turnover_pct']}%"),
         ]
@@ -507,7 +523,8 @@ def _cmd_backtest(args) -> int:
                 "scope to one instrument for the export"
             )
         # Multi-ticker file: independent per-ticker runs across the universe.
-        res = run_universe_backtest(strategy, df, capital=args.capital, cost_bps=cost_bps)
+        res = run_universe_backtest(strategy, df, capital=args.capital,
+                                    cost_bps=cost_bps, fill=fill)
         if args.as_json:
             return _emit_json(res)
         rows = res["per_ticker"]
@@ -548,7 +565,8 @@ def _cmd_backtest(args) -> int:
             "of rows per ticker)"
         )
 
-    result = run_backtest(strategy, df, capital=args.capital, cost_bps=cost_bps)
+    result = run_backtest(strategy, df, capital=args.capital, cost_bps=cost_bps,
+                          fill=fill)
     from .trace import fire_counts
     result["rule_activity"] = fire_counts(strategy, df)
     if args.as_json:
@@ -568,7 +586,7 @@ def _cmd_backtest(args) -> int:
         ("Costs", f"{cost_bps:g} bps per side"
                   if cost_bps else
                   "none modeled. Real fills pay fees and slippage; add --fee-bps / --slippage-bps"),
-        ("Fills", "at the close of the bar a rule fires; one position at a time"),
+        ("Fills", f"{fill_desc}; one position at a time"),
         ("Volatility", f"{result['volatility_pct']}%"),
         ("Max drawdown", f"{result['max_drawdown_pct']}%"),
         ("Trades", result["trades"]),
@@ -783,6 +801,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--chains", help="your own option chain data for options strategies (date, expiry, strike, right, delta, mid)")
     p.add_argument("--equity", help="write the daily equity curve to this CSV (chart it with anything)")
     p.add_argument("--capital", type=float, metavar="DOLLARS", help="account size: makes sizing tags real ([5%% portfolio], [$5000], [risk 1%%]) and reports dollar P&L")
+    p.add_argument("--fill", choices=["close", "next-open"], default="close",
+                   help="fill convention: close = at the signal bar's close (default, favorable — "
+                        "that print can't itself be traded); next-open = at the next bar's open "
+                        "(conservative — entries pay the overnight gap)")
     p.add_argument("--fee-bps", dest="fee_bps", type=float, default=0.0, metavar="BPS", help="commission per side in basis points (5 = 0.05%%)")
     p.add_argument("--slippage-bps", dest="slippage_bps", type=float, default=0.0, metavar="BPS", help="slippage per side in basis points, added to fees")
     p.add_argument("--contract-fee", dest="contract_fee", type=float, default=0.0, metavar="USD", help="options commission per contract per fill (e.g. 0.65)")

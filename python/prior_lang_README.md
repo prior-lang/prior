@@ -305,7 +305,7 @@ The rule activity table, the Sharpe convention label, the stated cost model (all
 
 Fractal levels (`[fractal_high N]` / `[fractal_low N]`, v0.14) were specified in review by **Gabriel Guevara Muradas**, including the reveal delay that makes marking a fractal on its own bar unwritable.
 
-Portfolios (v0.19) were prompted by a question from **Cory Parker**: can multiple strategies backtest as one book, with per-sleeve allocations and a combined curve? The design refuses the parts a combined curve cannot state honestly — the rebalance policy is mandatory rather than defaulted, true-ups pay stated costs on their turnover, and sleeve correlation and same-ticker overlap are printed so diversification is measured instead of assumed.
+Portfolios (v0.19) were prompted by a question from **Cory Parker**: can multiple strategies backtest as one book, with per-sleeve allocations and a combined curve? The design refuses the parts a combined curve cannot state honestly — the rebalance policy is mandatory rather than defaulted, true-ups pay stated costs on their turnover, and sleeve correlation and same-ticker overlap are printed so diversification is measured instead of assumed. His follow-up audit of the runner then found the one assumption the reports did not state: fills were priced at the close of the very bar that fired the rule — the favorable reading, since that print cannot itself be traded — and he correctly ranked it above everything else he raised. The `--fill next-open` convention (v0.20), and the report's admission that the default errs in the strategy's favor, exist because of that finding.
 
 ## License
 
