@@ -775,9 +775,16 @@ def run_portfolio_backtest(doc: dict, df, chains=None, capital=None,
     correlations = []
     for i in range(len(names)):
         for j in range(i + 1, len(names)):
-            c = aligned[names[i]].corr(aligned[names[j]])
+            ra, rb = aligned[names[i]], aligned[names[j]]
+            # A constant return stream has no correlation to report —
+            # guard rather than let numpy warn its way to the same NaN.
+            if float(ra.std()) == 0.0 or float(rb.std()) == 0.0:
+                c = None
+            else:
+                c = ra.corr(rb)
             correlations.append({"a": names[i], "b": names[j],
-                                 "corr": round(float(c), 3) if pd.notna(c) else None})
+                                 "corr": round(float(c), 3)
+                                 if c is not None and pd.notna(c) else None})
 
     overlap = []
     overlap_unavailable = [n for n in names if expo_by[n] is None]

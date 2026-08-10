@@ -178,3 +178,102 @@ def test_min_shared_bars_refused():
     df = pd.concat([_bars("AAA", [0.01] * 20), _bars("BBB", [0.01] * 20)])
     with pytest.raises(PriorError, match="fewer than 40"):
         run_portfolio_backtest(_always_on_doc("never"), df)
+
+
+def test_weekly_trues_up_more_often_than_monthly():
+    n = 130
+    rng = np.random.default_rng(11)
+    ra = list(rng.normal(0.003, 0.01, n))
+    rb = list(rng.normal(-0.001, 0.01, n))
+    df = pd.concat([_bars("AAA", ra), _bars("BBB", rb)])
+    weekly = run_portfolio_backtest(_always_on_doc("weekly"), df)
+    monthly = run_portfolio_backtest(_always_on_doc("monthly"), df)
+    assert weekly["rebalances"] > monthly["rebalances"] > 3
+
+
+def test_three_sleeve_book_and_capital_dollars():
+    src = ('portfolio "Three"\n  sleeve 30% "A"\n  sleeve 30% "B"\n'
+           '  sleeve 40% "C"\n  rebalance never\n\n'
+           + S_A + "\n" + S_B + "\n"
+           + S_B.replace('"B"', '"C"').replace("$BBB", "$CCC"))
+    doc = compile_source(src)
+    n = 90
+    df = pd.concat([_bars("AAA", [0.002] * n), _bars("BBB", [0.001] * n),
+                    _bars("CCC", [-0.001] * n)])
+    res = run_portfolio_backtest(doc, df, capital=10_000)
+    assert len(res["sleeves"]) == 3
+    assert len(res["correlations"]) == 3   # 3 choose 2
+    assert abs(res["final_equity_usd"]
+               - 10_000 * float(res["equity"].iloc[-1])) < 0.01
+    assert abs(res["net_pnl_usd"]
+               - (res["final_equity_usd"] - 10_000)) < 0.01
+
+
+def test_ranking_sleeve_composes():
+    src = ('portfolio "Mixed"\n  sleeve 50% "Picker"\n  sleeve 50% "A"\n'
+           '  rebalance monthly\n\n'
+           'strategy "Picker"\n\nuniverse $AAA $BBB $CCC\ntimeframe 1d\n\n'
+           'hold top 2 by [momentum 20]\nrebalance monthly\n\n' + S_A)
+    doc = compile_source(src)
+    n = 130
+    rng = np.random.default_rng(3)
+    df = pd.concat([_bars(t, list(rng.normal(m, 0.01, n)))
+                    for t, m in (("AAA", 0.002), ("BBB", 0.001), ("CCC", -0.001))])
+    res = run_portfolio_backtest(doc, df)
+    kinds = {s["kind"] for s in res["sleeves"]}
+    assert kinds == {"ranking", "rules"}
+    # The ranking sleeve exposes per-ticker weights, so overlap with the
+    # rules sleeve on AAA is measurable (rules sleeve enters on RSI<30,
+    # which may or may not fire — overlap list is valid either way).
+    assert res["overlap_unavailable"] == []
+
+
+def test_pair_sleeve_composes_with_leg_overlap():
+    src = ('portfolio "PairBook"\n  sleeve 50% "Spread"\n  sleeve 50% "L"\n'
+           '  rebalance never\n\n'
+           'strategy "Spread"\n\ntimeframe 1d\n\n'
+           'when spread($AAA, $BBB) below [sma 20]\n  buy [5% portfolio]\n\n'
+           'sell when [after 10 bars]\n\n'
+           'strategy "L"\n\nuniverse $AAA\ntimeframe 1d\n\n'
+           'when price above 1\n  buy [5% portfolio]\n\n'
+           'sell when price below 1 or [after 500 bars]\n')
+    doc = compile_source(src)
+    n = 120
+    rng = np.random.default_rng(5)
+    df = pd.concat([_bars("AAA", list(rng.normal(0.001, 0.012, n))),
+                    _bars("BBB", list(rng.normal(0.001, 0.012, n)))])
+    res = run_portfolio_backtest(doc, df)
+    kinds = {s["kind"] for s in res["sleeves"]}
+    assert kinds == {"pair", "rules"}
+    # If the spread sleeve ever held, its AAA leg overlaps the long sleeve.
+    if any(o["ticker"] == "AAA" for o in res["overlap"]):
+        o = next(o for o in res["overlap"] if o["ticker"] == "AAA")
+        assert 0 < o["both_pct"] <= 100
+
+
+def test_sleeve_order_changes_digest():
+    a = compile_source(_book(rebalance="never", w=(60, 40)))
+    b = compile_source(
+        'portfolio "Book"\n  sleeve 40% "B"\n  sleeve 60% "A"\n'
+        '  rebalance never\n\n' + S_A + "\n" + S_B)
+    assert strategy_digest(a) != strategy_digest(b)
+
+
+def test_receipt_binds_document_and_sleeve_digests(tmp_path):
+    from prior_lang.receipt import build_receipt
+    from prior_lang.parser import parse_source
+    src = _book(rebalance="monthly")
+    prog = parse_source(src)
+    doc = prog.to_json()
+    data = tmp_path / "bars.csv"
+    data.write_text("date,open,high,low,close,volume\n"
+                    "2023-01-02,1,1,1,1,1\n")
+    r = build_receipt(program=prog, strategy=doc, data_path=str(data),
+                      metrics={"total_return_pct": 1.0}, prior_version="test")
+    assert r["strategy"]["direction"] == "portfolio"
+    assert r["strategy"]["digest"] == f"sha256:{strategy_digest(doc)}"
+    assert len(r["strategy"]["sleeves"]) == 2
+    for i, s in enumerate(r["strategy"]["sleeves"]):
+        sub = doc["portfolio"]["sleeves"][i]["strategy"]
+        assert s["digest"] == f"sha256:{strategy_digest(sub)}"
+        assert s["name"] == sub["name"]
