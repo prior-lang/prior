@@ -460,8 +460,8 @@
       "kind": "condition",
       "usage": "operand",
       "cloudOnly": false,
-      "description": "Exponential moving average of closes. In crosses, the faster average goes on the left.",
-      "example": "when [ema 50] crosses above [ema 200]",
+      "description": "Exponential moving average of closes. Price crosses/touches it like [sma]; in MA-vs-MA crosses the faster average goes on the left.",
+      "example": "when price crosses above [ema 9]",
       "params": [
         {
           "name": "period",
@@ -1146,8 +1146,8 @@
       "kind": "condition",
       "usage": "operand",
       "cloudOnly": false,
-      "description": "Simple moving average of closes. Compare price or a faster average against it.",
-      "example": "when price above [sma 200]",
+      "description": "Simple moving average of closes. Price compares with above/below, crosses above/below (an event: previous close on the other side), or at (the bar's range touched the line).",
+      "example": "when price crosses above [sma 50]",
       "params": [
         {
           "name": "period",
@@ -1497,8 +1497,8 @@
       "kind": "condition",
       "usage": "operand",
       "cloudOnly": false,
-      "description": "Rolling volume-weighted average price. Needs volume \u2014 unavailable on spreads.",
-      "example": "when price above [vwap 20]",
+      "description": "Rolling volume-weighted average price. Price compares, crosses, or touches it (at). Needs volume \u2014 unavailable on spreads.",
+      "example": "when price crosses above [vwap]",
       "params": [
         {
           "name": "period",
